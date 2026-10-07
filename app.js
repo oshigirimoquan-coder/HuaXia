@@ -30,10 +30,16 @@ function screen(html){mode='screen';$('#tabs').hidden=true;$('#view').innerHTML=
 function showSetup(){screen(`<h2>還差一步：連接資料庫</h2>
   <p class="muted">這個網站需要一個 Supabase 專案來存資料與登入。</p>
   <ol class="steps"><li>到 supabase.com 建立專案。</li><li>在 SQL Editor 執行 repo 裡的 <code>schema.sql</code>。</li>
-  <li>把 Project URL 和 anon public key 填進 <code>config.js</code>。</li><li>照 README 開啟 Google 登入。</li></ol>`)}
-function showLogin(){$('#who').innerHTML='';screen(`<h2>登入${esc(S.meta.team_name||'團隊事務台')}</h2>
-  <p class="muted">用 Google 帳號登入。第一次登入需要等管理者核准。</p>
-  <button class="btn pri" data-act="login">使用 Google 登入</button>`)}
+  <li>把 Project URL 和 anon public key 填進 <code>config.js</code>。</li><li>在 Authentication 關閉 Confirm email（見 README）。</li></ol>`)}
+let authMode='login';
+function showLogin(){$('#who').innerHTML='';const up=authMode==='signup';screen(`<h2>${up?'註冊':'登入'}${esc(S.meta.team_name||'團隊事務台')}</h2>
+  <p class="muted">${up?'註冊後需要等管理者核准才能使用。':'用註冊時的 Email 和密碼登入。'}</p>
+  <form class="panel form" data-form="auth" style="text-align:left">
+   ${up?'<label>姓名（其他成員看到的名字）<input type="text" id="au-name" required maxlength="40" autocomplete="name"></label>':''}
+   <label>Email<input type="email" id="au-email" required autocomplete="email"></label>
+   <label>密碼（至少 6 個字元）<input type="password" id="au-pw" required minlength="6" autocomplete="${up?'new-password':'current-password'}"></label>
+   <button class="btn pri" type="submit">${up?'註冊並申請加入':'登入'}</button></form>
+  <button class="btn ghost" data-act="authmode">${up?'已經有帳號？登入':'第一次使用？註冊帳號'}</button>`)}
 function showPending(){whoBar();screen(`<h2>已送出加入申請</h2>
   <p class="muted">管理者核准後就能使用。核准後重新整理這個頁面即可。</p>
   <button class="btn" data-act="refresh">重新整理</button>`)}
@@ -258,7 +264,7 @@ document.addEventListener('click',e=>{
   const delStep=fn=>{if(confirmDel!==id){confirmDel=id;draw();return}confirmDel=null;fn()};
   if(!/^(del|reject)/.test(a))confirmDel=null;
   switch(a){
-    case 'login':sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}}).then(r=>{if(r.error)toast(errMsg(r.error))});break;
+    case 'authmode':authMode=authMode==='signup'?'login':'signup';showLogin();break;
     case 'logout':sb.auth.signOut();break;
     case 'refresh':location.reload();break;
     case 'goto':tab=v;draw();break;
@@ -286,6 +292,11 @@ document.addEventListener('change',e=>{const c=e.target;if(c.dataset.act!=='pres
   act(()=>sb.from('attendance').upsert({event_id:c.dataset.id,user_id:c.dataset.uid,present:c.checked}))});
 document.addEventListener('submit',e=>{e.preventDefault();const f=e.target,k=f.dataset.form,val=id=>{const el=document.getElementById(id);return el?el.value.trim():''};
   const done=()=>{f.reset();showForm=null};
+  if(k==='auth'){const email=val('au-email'),pw=document.getElementById('au-pw').value,btn=f.querySelector('button');btn.disabled=true;
+    const fail=e=>{btn.disabled=false;const m=(e&&e.message)||'';
+      toast(/Invalid login/i.test(m)?'Email 或密碼錯誤。':/already registered/i.test(m)?'這個 Email 已經註冊過，請直接登入。':/Password/i.test(m)?'密碼至少要 6 個字元。':errMsg(e))};
+    (authMode==='signup'?sb.auth.signUp({email,password:pw,options:{data:{full_name:val('au-name')}}}):sb.auth.signInWithPassword({email,password:pw}))
+      .then(r=>{if(r.error)return fail(r.error);if(!r.data.session){btn.disabled=false;toast('註冊成功，請到信箱點確認信後再登入。')}}).catch(fail);return}
   if(k==='task'){const title=val('t-title');if(!title)return;const as=[...f.querySelectorAll('input[data-uid]:checked')].map(x=>x.dataset.uid);
     act(async()=>{const r=await sb.from('tasks').insert({title,descr:val('t-desc'),due:val('t-due')||null,assignees:as});if(!r.error)done();return r},'已建立任務')}
   if(k==='event'){const title=val('e-title'),date=val('e-date');if(!title||!date)return;
