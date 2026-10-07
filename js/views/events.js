@@ -15,15 +15,16 @@ export async function invokeFn(name, body) {
 export function eventCard(e, { leave } = {}) {
   const d = daysFromToday(e.starts_at);
   const t = twParts(e.starts_at);
+  const flag = leave ? `<span class="chip ${leave.type === 'leave' ? 'bad' : 'warn'}">已${LEAVE_LABEL[leave.type]}</span>`
+    : d === 0 ? '<span class="chip warn">今天</span>' : d === 1 ? '<span class="chip">明天</span>' : '';
   return `<a class="ev-card kind-${e.kind} ${d < 0 ? 'past' : ''}" href="#/events/${e.id}">
     <div class="ev-date"><b>${t.month}/${t.day}</b><span>週${twWeekday(e.starts_at)}</span></div>
     <div class="ev-body">
-      <div class="ev-top"><span class="kind">${KIND_LABEL[e.kind]}</span>${e.section ? sectionChip(e.section) : ''}
-        ${d === 0 ? '<span class="chip warn">今天</span>' : d === 1 ? '<span class="chip">明天</span>' : ''}
-        ${leave ? `<span class="chip ${leave.type === 'leave' ? 'bad' : 'warn'}">已${LEAVE_LABEL[leave.type]}</span>` : ''}</div>
+      <div class="ev-top"><span class="kind">${KIND_LABEL[e.kind]}</span>${e.section ? sectionChip(e.section) : ''}</div>
       <h3>${esc(e.title)}</h3>
-      <p class="meta"><span class="mono">${fmtTime(e.starts_at)}–${fmtTime(e.ends_at)}</span>${e.location ? ` · ${esc(e.location)}` : ''}</p>
-    </div></a>`;
+      <p class="meta"><span class="mono">${fmtTime(e.starts_at)}–${fmtTime(e.ends_at)}</span>${e.location ? `　${esc(e.location)}` : ''}</p>
+    </div>
+    <div class="ev-side">${flag}</div></a>`;
 }
 
 async function pieceOptions() {

@@ -38,7 +38,7 @@ route('/attendance', async () => {
   });
   const rules = state.settings.attendance_rules || {};
   return pageHead('出席', `${esc(state.semester.name)}・「目前」只算已點名的場次，「整學期」連同之後的場次一起算。沒排到曲目的場次算無曲，不列入。`) +
-    `<section class="card me-att"><div class="rings">${rateRing(mine?.current_rate ?? null, '目前')}${rateRing(mine?.total_rate ?? null, '整學期')}</div>
+    `<section class="card me-att"><div class="rings bign">${rateRing(mine?.current_rate ?? null, '目前')}${rateRing(mine?.total_rate ?? null, '整學期')}</div>
       <div class="me-att-detail"><h2>我的紀錄</h2>${await detail(me())}</div></section>` +
     (others.length ? `<section class="card">
       <div class="card-head"><h2>${p.officer ? '全團' : '組員'}出席率</h2><span class="muted small">晚到算 ${rules.late_weight ?? 1} 次、早退算 ${rules.early_weight ?? 1} 次・請假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}</span></div>

@@ -43,7 +43,7 @@ route('/announcements', async () => {
   return pageHead('公告', '', p.officer ? '<button class="btn pri" id="add-ann">＋ 發布公告</button>' : '') +
     `<div class="seg wrap"><button data-af="" aria-pressed="${!f}">全部</button>${Object.entries(ANN_TYPE).map(([k, l]) => `<button data-af="${k}" aria-pressed="${f === k}">${l}</button>`).join('')}</div>` +
     (list.length ? `<div class="ann-list">${list.map((a) => `<article class="ann t-${a.type} ${read.has(a.id) ? '' : 'unread'}">
-      <div class="ann-top"><span class="atype t-${a.type}">${ANN_TYPE[a.type]}</span>${a.pinned ? '<span class="chip gold">置頂</span>' : ''}
+      <div class="ann-head"><span class="atype t-${a.type}">${ANN_TYPE[a.type]}</span>${a.pinned ? '<span class="chip gold">置頂</span>' : ''}
         <span class="chip">${a.audience === 'section' ? esc(a.section) + '組' : ANN_AUDIENCE[a.audience]}</span>
         ${p.officer ? `<button class="btn sm ghost" data-edit-ann="${a.id}">編輯</button>` : ''}</div>
       <h3>${esc(a.title)}</h3>${a.body ? `<p class="body">${esc(a.body)}</p>` : ''}
