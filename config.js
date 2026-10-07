@@ -1,6 +1,5 @@
-// 填入 Supabase 專案的 Project URL 與 anon public key（Project Settings → API）。
-// anon key 設計上可以公開；千萬不要放 service_role key。
+// Supabase 專案設定。publishable key 設計上可以公開；千萬不要放 secret / service_role key。
 window.TEAM_DESK_CONFIG = {
-  url: "",
-  anonKey: ""
+  url: "https://cluuvrdreqpchfoscowc.supabase.co",
+  anonKey: "sb_publishable_CK-Xpp2OOiaUVh3b1dmgGg_ktahQV_8"
 };
