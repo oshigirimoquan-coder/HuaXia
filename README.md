@@ -49,4 +49,4 @@ anon key 設計上可以公開；**service_role key 絕對不能放進來**。
 Supabase 免費專案如果**連續 7 天沒有任何使用**會被暫停，回後台按 Restore 即可恢復，資料不會遺失。
 
 ## 忘記密碼
-免費方案沒有寄信功能，所以沒有「忘記密碼」按鈕。成員忘記密碼時，負責人到 Supabase **Authentication → Users** 找到該帳號 → **Send password recovery** 不可用時，可以直接刪除該使用者，讓對方重新註冊，再核准一次。
+免費方案沒有寄信功能，所以沒有「忘記密碼」按鈕。成員忘記密碼時，負責人到 Supabase **Authentication → Users** 刪除該帳號，讓對方用同一個 Email 重新註冊，再核准一次。
