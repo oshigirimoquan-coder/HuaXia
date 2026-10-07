@@ -1,0 +1,118 @@
+// 資料庫規則測試：用 PGlite（瀏覽器版 Postgres）在本機跑 schema.sql，模擬不同身分的人
+import { test, before } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+
+const db = new PGlite();
+const A = '00000000-0000-0000-0000-00000000000a'; // 第一位註冊 → 管理員
+const B = '00000000-0000-0000-0000-00000000000b'; // 社員（拉弦）
+const R = '00000000-0000-0000-0000-00000000000c'; // 槍手
+const S = '11111111-1111-1111-1111-111111111111';
+const P1 = '22222222-2222-2222-2222-222222222221', P2 = '22222222-2222-2222-2222-222222222222';
+const PT1 = '33333333-3333-3333-3333-333333333331', PT2 = '33333333-3333-3333-3333-333333333332';
+const E = (n) => `55555555-5555-5555-5555-55555555555${n}`;
+
+async function as(uid, sql) {
+  await db.exec(`reset role; select set_config('test.uid','${uid}',false); set role authenticated;`);
+  try { const r = await db.exec(sql); return { rows: r[r.length - 1]?.rows ?? [] }; }
+  catch (e) { return { error: e.message }; }
+  finally { await db.exec('reset role'); }
+}
+
+before(async () => {
+  await db.exec(`
+    create schema auth; create schema storage;
+    create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}');
+    create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true),'')::uuid $$;
+    create table storage.buckets (id text primary key, name text, public boolean);
+    create table storage.objects (id uuid default gen_random_uuid(), bucket_id text, name text);
+    create role authenticated;`);
+  const sql = fs.readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8').replace(/create extension[^;]+;/, '');
+  await db.exec(sql);
+  await db.exec(sql); // 可以重複執行
+  await db.exec(`grant usage on schema public, auth, storage to authenticated; grant all on all tables in schema public, storage to authenticated;
+    grant execute on all functions in schema public, auth to authenticated;`);
+  await db.exec(`insert into auth.users values ('${A}','a@x','{"full_name":"社長"}'),('${B}','b@x','{"name":"阿B"}'),('${R}','r@x','{}')`);
+  await as(A, `update profiles set status='active', section='拉弦' where id='${B}'; insert into user_roles values ('${B}','member');
+    update profiles set status='active' where id='${R}'; insert into user_roles values ('${R}','ringer');
+    insert into semesters (id,name,starts_on,ends_on,is_current) values ('${S}','114-1','2026-09-01','2027-01-31',true);
+    insert into pieces (id,title) values ('${P1}','泰芙努特'),('${P2}','神遊浯洲');
+    insert into piece_parts (id,piece_id,name,needed_min) values ('${PT1}','${P1}','二胡I',2),('${PT2}','${P2}','高胡',1);
+    insert into ringers (id,name,status,user_id) values ('44444444-4444-4444-4444-444444444444','外校甲','accepted','${R}');
+    insert into part_assignments (part_id,user_id) values ('${PT1}','${B}');
+    insert into part_assignments (part_id,ringer_id) values ('${PT2}','44444444-4444-4444-4444-444444444444');
+    insert into events (id,semester_id,kind,title,starts_at,ends_at,calendar_key) values
+      ('${E(1)}','${S}','tutti','大團','2026-09-22 19:30+08','2026-09-22 21:30+08','tutti'),
+      ('${E(2)}','${S}','tutti','大團','2026-09-29 19:30+08','2026-09-29 21:30+08','tutti'),
+      ('${E(3)}','${S}','sizhu','絲竹','2026-10-06 19:30+08','2026-10-06 21:30+08','tutti'),
+      ('${E(4)}','${S}','tutti','大團','2026-12-01 19:30+08','2026-12-01 21:30+08','tutti');
+    insert into events (id,semester_id,kind,title,starts_at,ends_at,calendar_key,audience,counts_attendance) values
+      ('${E(5)}','${S}','officer','幹部會議','2026-10-01 12:00+08','2026-10-01 13:00+08','officers','officers',false);
+    insert into event_pieces values ('${E(3)}','${P2}');
+    insert into attendance (event_id,user_id,status) values ('${E(1)}','${B}','late'),('${E(1)}','${A}','present'),('${E(2)}','${A}','present'),('${E(3)}','${A}','present');`);
+  await as(B, `insert into leave_requests (event_id,type,reason) values ('${E(2)}','leave','考試')`);
+});
+
+test('第一位註冊的人自動成為啟用中的管理員，之後的人待核准', async () => {
+  const r = await db.query(`select id, status from profiles order by id`);
+  assert.equal(r.rows[0].status, 'active');
+  const roles = await db.query(`select role from user_roles where user_id='${A}' order by role`);
+  assert.deepEqual(roles.rows.map((x) => x.role), ['admin', 'member']);
+});
+
+test('社員不能自己升成管理員，也不能改自己的帳號狀態', async () => {
+  assert.match((await as(B, `insert into user_roles values ('${B}','admin')`)).error, /row-level security/);
+  assert.match((await as(B, `update profiles set status='inactive' where id='${B}'`)).error, /只有管理員/);
+});
+
+test('不能移除最後一位管理員', async () => {
+  assert.match((await as(A, `delete from user_roles where user_id='${A}' and role='admin'`)).error, /至少要有一位管理員/);
+});
+
+test('出席率：晚到算出席、請假算缺席、沒排到曲目的場次自動無曲', async () => {
+  const { rows } = await as(A, `select * from attendance_stats('${S}')`);
+  const b = rows.find((r) => r.user_id === B);
+  assert.equal(b.expected_total, 3);      // E1、E2、E4（E3 無曲）
+  assert.equal(b.expected_so_far, 2);     // 已點名的 E1、E2
+  assert.equal(b.late, 1);
+  assert.equal(b.excused, 1);
+  assert.equal(Number(b.current_rate), 50);
+});
+
+test('出席規則改成「請假不列入」後重新計算', async () => {
+  await as(A, `update settings set value = jsonb_set(value, '{excused_mode}', '"exclude"') where key='attendance_rules'`);
+  const { rows } = await as(A, `select * from attendance_stats('${S}')`);
+  assert.equal(Number(rows.find((r) => r.user_id === B).current_rate), 100);
+  await as(A, `update settings set value = jsonb_set(value, '{excused_mode}', '"absent"') where key='attendance_rules'`);
+});
+
+test('社員只看得到自己的出席率', async () => {
+  const { rows } = await as(B, `select user_id from attendance_stats('${S}')`);
+  assert.deepEqual(rows.map((r) => r.user_id), [B]);
+});
+
+test('社員看不到幹部會議；槍手只看到有自己曲目的行程', async () => {
+  assert.deepEqual((await as(B, `select kind from events order by starts_at`)).rows.map((r) => r.kind), ['tutti', 'tutti', 'sizhu', 'tutti']);
+  assert.deepEqual((await as(R, `select kind from events`)).rows.map((r) => r.kind), ['sizhu']);
+  assert.deepEqual((await as(R, `select title from pieces`)).rows.map((r) => r.title), ['神遊浯洲']);
+});
+
+test('幹部事項社員看不到', async () => {
+  await as(A, `insert into tasks (title,audience) values ('幹部事','officers'),('大家事','insiders')`);
+  assert.deepEqual((await as(B, `select title from tasks`)).rows.map((r) => r.title), ['大家事']);
+});
+
+test('社員不能發公告', async () => {
+  assert.match((await as(B, `insert into announcements (title) values ('x')`)).error, /row-level security/);
+});
+
+test('樂譜只看得到自己的聲部', async () => {
+  await as(A, `insert into scores (piece_id,part_id,title,file_path) values ('${P1}','${PT1}','二胡I譜','a'),('${P2}','${PT2}','高胡譜','b')`);
+  assert.deepEqual((await as(B, `select title from scores`)).rows.map((r) => r.title), ['二胡I譜']);
+  assert.deepEqual((await as(R, `select title from scores`)).rows.map((r) => r.title), ['高胡譜']);
+});
+
+test('別人看不到我的手機與信箱', async () => {
+  assert.equal((await as(B, `select * from profile_private where user_id='${A}'`)).rows.length, 0);
+});

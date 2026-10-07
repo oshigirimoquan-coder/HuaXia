@@ -1,0 +1,101 @@
+import { sb, state, route, esc, run, toast, formDialog, pageHead, empty, render, $, $$, loadShared } from '../core.js';
+import { SECTIONS } from '../logic.js';
+import { invokeFn } from './events.js';
+
+const setVal = (key, value) => run(() => sb.from('settings').upsert({ key, value }));
+
+route('/settings', async () => {
+  if (!state.p.admin) return empty('只有管理員可以進入設定');
+  const { data: pd } = await sb.from('private_settings').select('*').eq('key', 'discord').maybeSingle();
+  const hooks = pd?.value || {};
+  const rules = state.settings.attendance_rules || {};
+  const notify = state.settings.notify || { channel: 'discord' };
+
+  setTimeout(() => {
+    $('#team')?.addEventListener('submit', async (e) => {
+      e.preventDefault(); const v = $('#team-name').value.trim(); if (!v) return;
+      if (await setVal('team_name', v)) { toast('已更新', 'ok'); await loadShared(); render(); }
+    });
+    $('#add-sem')?.addEventListener('click', async () => {
+      const v = await formDialog({ title: '新增學期', fields: [
+        { name: 'name', label: '名稱', required: true, placeholder: '例：114-2' },
+        { name: 'starts_on', label: '開始', type: 'date', required: true },
+        { name: 'ends_on', label: '結束', type: 'date', required: true },
+        { name: 'current', label: '目前學期', type: 'toggle', text: '設為目前學期（舊學期自動封存）', value: true },
+      ] });
+      if (!v) return;
+      if (v.current) await sb.from('semesters').update({ is_current: false }).eq('is_current', true);
+      await run(() => sb.from('semesters').insert({ name: v.name, starts_on: v.starts_on, ends_on: v.ends_on, is_current: v.current }), '已新增學期');
+      await loadShared(); render();
+    });
+    $$('[data-cur]').forEach((b) => (b.onclick = async () => {
+      await sb.from('semesters').update({ is_current: false }).eq('is_current', true);
+      await run(() => sb.from('semesters').update({ is_current: true }).eq('id', b.dataset.cur), '已切換目前學期');
+      await loadShared(); render();
+    }));
+    $('#rules')?.addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = new FormData(e.target);
+      const v = { late_weight: Number(f.get('late')), early_weight: Number(f.get('early')), excused_mode: f.get('excused'), count_ringers: f.get('ringers') === 'on' };
+      if (await setVal('attendance_rules', v)) { toast('出席規則已更新', 'ok'); await loadShared(); }
+    });
+    $('#notify')?.addEventListener('submit', async (e) => {
+      e.preventDefault(); const f = new FormData(e.target);
+      const value = { announce: f.get('announce').trim(), officers: f.get('officers').trim(), sections: Object.fromEntries(SECTIONS.map((s) => [s, f.get('s-' + s).trim()]).filter(([, u]) => u)) };
+      const bad = [value.announce, value.officers, ...Object.values(value.sections)].filter((u) => u && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(u));
+      if (bad.length) return toast('Webhook 網址格式不對，應以 https://discord.com/api/webhooks/ 開頭', 'bad');
+      const a = await run(() => sb.from('private_settings').upsert({ key: 'discord', value }));
+      const b = await setVal('notify', { channel: f.get('channel') });
+      if (a && b) { toast('通知設定已儲存', 'ok'); await loadShared(); }
+    });
+    $('#cal-setup')?.addEventListener('click', async (e) => {
+      e.target.disabled = true; e.target.textContent = '建立中…';
+      try { const r = await invokeFn('calendar-sync', { action: 'setup' }); toast(`已建立 ${r?.calendars?.length ?? ''} 本行事曆`, 'ok'); await loadShared(); render(); }
+      catch (err) { toast('建立失敗：' + err.message, 'bad'); e.target.disabled = false; e.target.textContent = '建立／檢查行事曆'; }
+    });
+    $('#cal-acl')?.addEventListener('click', async () => {
+      try { const r = await invokeFn('calendar-sync', { action: 'acl' }); toast(`幹部行事曆已分享給 ${r?.readers ?? 0} 個信箱`, 'ok'); }
+      catch (err) { toast('同步失敗：' + err.message, 'bad'); }
+    });
+  });
+
+  return pageHead('設定', '只有管理員看得到這一頁。') +
+    `<div class="settings">
+    <section class="card"><h2>團隊名稱</h2>
+      <form id="team" class="inline-form"><input id="team-name" value="${esc(state.settings.team_name || '')}" aria-label="團隊名稱"><button class="btn">儲存</button></form></section>
+
+    <section class="card"><div class="card-head"><h2>學期</h2><button class="btn sm pri" id="add-sem">＋ 新增學期</button></div>
+      <p class="small muted">行程、出席率、教學班都歸屬某個學期。換學期時新增一個並設為目前學期，舊學期資料會保留成紀錄。</p>
+      ${state.semesters.length ? `<ul class="sem-list">${state.semesters.map((s) => `<li><b>${esc(s.name)}</b><span class="mono small muted">${s.starts_on} – ${s.ends_on}</span>${s.is_current ? '<span class="chip ok">目前學期</span>' : `<button class="btn sm ghost" data-cur="${s.id}">設為目前</button>`}</li>`).join('')}</ul>` : '<p class="callout">還沒有學期。先新增一個，才能建立行程。</p>'}</section>
+
+    <section class="card"><h2>出席率規則 <span class="chip warn">待社長確認</span></h2>
+      <form id="rules" class="grid-form">
+        <label>晚到算幾次出席<input name="late" type="number" step="0.5" min="0" max="1" value="${rules.late_weight ?? 1}"></label>
+        <label>早退算幾次出席<input name="early" type="number" step="0.5" min="0" max="1" value="${rules.early_weight ?? 1}"></label>
+        <label>請假的場次<select name="excused"><option value="absent" ${rules.excused_mode !== 'exclude' ? 'selected' : ''}>算缺席（列入分母）</option><option value="exclude" ${rules.excused_mode === 'exclude' ? 'selected' : ''}>不列入計算</option></select></label>
+        <label class="check"><input name="ringers" type="checkbox" ${rules.count_ringers ? 'checked' : ''}><span>槍手也計算出席率</span></label>
+        <button class="btn">儲存規則</button>
+      </form><p class="small muted">1 = 算一次完整出席，0.5 = 算半次，0 = 不算。修改後所有人的出席率會立刻重新計算。</p></section>
+
+    <section class="card"><h2>通知 <span class="chip warn">待社長決定管道</span></h2>
+      <form id="notify" class="grid-form">
+        <label class="full">公告與行程通知要發到<select name="channel">
+          <option value="discord" ${notify.channel === 'discord' ? 'selected' : ''}>Discord</option>
+          <option value="email" ${notify.channel === 'email' ? 'selected' : ''}>Gmail（尚未接上）</option>
+          <option value="both" ${notify.channel === 'both' ? 'selected' : ''}>兩者都發</option></select></label>
+        <label class="full">公告頻道 Webhook<input name="announce" value="${esc(hooks.announce || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
+        <label class="full">幹部頻道 Webhook<input name="officers" value="${esc(hooks.officers || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
+        ${SECTIONS.map((s) => `<label>${s}組頻道（選填）<input name="s-${s}" value="${esc(hooks.sections?.[s] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}
+        <button class="btn">儲存通知設定</button>
+      </form><p class="small muted">Webhook 在 Discord 頻道設定 → 整合 → Webhook 建立。這些網址只有管理員看得到。</p></section>
+
+    <section class="card"><h2>Google 行事曆</h2>
+      <p class="small muted">第一次設定好 Google 服務帳戶後，按「建立／檢查行事曆」，系統會建立 ${state.calendars.length} 本共用行事曆。之後新增的行程會自動同步。</p>
+      <ul class="cal-admin">${state.calendars.map((c) => `<li><span>${esc(c.name)}</span>${c.gcal_id ? '<span class="chip ok">已建立</span>' : '<span class="chip">未建立</span>'}</li>`).join('')}</ul>
+      <div class="actions"><button class="btn pri" id="cal-setup">建立／檢查行事曆</button><button class="btn" id="cal-acl">同步幹部行事曆權限</button></div>
+      <p class="small muted">幹部行事曆只分享給幹部在「我的設定」填的 Google 信箱。調整幹部名單後會自動同步，也可以手動按上面的按鈕。</p></section>
+
+    <section class="card"><h2>交接</h2>
+      <p class="small">換屆時：新增學期並設為目前學期 → 到「成員」調整幹部與組長身分組 → 把「管理員」交給下一任 → 依 HANDOVER.md 轉移 GitHub、Supabase、Google、Discord 帳號。</p>
+      <p class="small muted">系統會阻止移除最後一位管理員，避免交接時沒有人能登入設定。</p></section>
+    </div>`;
+});

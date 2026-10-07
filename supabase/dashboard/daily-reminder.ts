@@ -1,0 +1,139 @@
+// daily-reminder：自動產生的單檔版本（來源 supabase/functions/daily-reminder），請勿直接修改
+// 共用工具：CORS、身分檢查、Google 存取權杖、Discord 發文
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+export const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+export const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+export const admin = (): SupabaseClient =>
+  createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+// 以呼叫者身分檢查角色（is_officer / is_admin）
+export async function callerIs(req: Request, fn: "is_officer" | "is_admin"): Promise<boolean> {
+  const auth = req.headers.get("Authorization");
+  if (!auth) return false;
+  const c = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } },
+  });
+  const { data } = await c.rpc(fn);
+  return data === true;
+}
+
+// ---------- Google 服務帳戶 → 存取權杖 ----------
+let cached: { token: string; exp: number } | null = null;
+const b64url = (b: ArrayBuffer | Uint8Array | string) => {
+  const bytes = typeof b === "string" ? new TextEncoder().encode(b) : new Uint8Array(b as ArrayBuffer);
+  let s = ""; bytes.forEach((x) => (s += String.fromCharCode(x)));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+export async function googleToken(): Promise<string> {
+  if (cached && cached.exp > Date.now() / 1000 + 60) return cached.token;
+  const raw = Deno.env.get("GOOGLE_SERVICE_ACCOUNT");
+  if (!raw) throw new Error("尚未設定 GOOGLE_SERVICE_ACCOUNT");
+  const sa = JSON.parse(raw);
+  const now = Math.floor(Date.now() / 1000);
+  const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = b64url(JSON.stringify({
+    iss: sa.client_email, scope: "https://www.googleapis.com/auth/calendar",
+    aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
+  }));
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(`${head}.${claim}`));
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: `${head}.${claim}.${b64url(sig)}`,
+    }),
+  });
+  const j = await res.json();
+  if (!j.access_token) throw new Error("Google 授權失敗：" + JSON.stringify(j));
+  cached = { token: j.access_token, exp: now + j.expires_in };
+  return j.access_token;
+}
+
+export async function gcal(path: string, method = "GET", body?: unknown) {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${await googleToken()}`, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return null;
+  const j = await res.json().catch(() => null);
+  if (!res.ok && !(method === "DELETE" && res.status === 410)) {
+    throw new Error(`Google Calendar ${method} ${path}: ${res.status} ${JSON.stringify(j)}`);
+  }
+  return j;
+}
+
+// ---------- Discord ----------
+export async function discord(url: string | undefined, content: string) {
+  if (!url) return false;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: content.slice(0, 1990), allowed_mentions: { parse: [] } }),
+  });
+  return res.ok;
+}
+
+export const KIND: Record<string, string> = {
+  tutti: "大團", sizhu: "絲竹", extra: "加練", sectional: "分部課", class: "教學班",
+  dress: "總彩", concert: "公演", officer: "幹部會議", other: "活動",
+};
+
+export const twTime = (iso: string) =>
+  new Date(iso).toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+
+// 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務
+// 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return json({ error: "forbidden" }, 403);
+  const db = admin();
+  const SITE = Deno.env.get("SITE_URL") ?? "";
+
+  // 台北時間的「明天」
+  const tw = new Date(Date.now() + 8 * 3600e3);
+  tw.setUTCDate(tw.getUTCDate() + 1);
+  const day = tw.toISOString().slice(0, 10);
+  const from = new Date(`${day}T00:00:00+08:00`).toISOString();
+  const to = new Date(`${day}T23:59:59+08:00`).toISOString();
+
+  const { data: d } = await db.from("private_settings").select("value").eq("key", "discord").maybeSingle();
+  const hooks = d?.value ?? {};
+  const { data: events } = await db.from("events").select("*, event_pieces(pieces(title))")
+    .gte("starts_at", from).lte("starts_at", to).order("starts_at");
+
+  const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
+  const line = (e: any) => {
+    const ps = (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean);
+    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${KIND[e.kind] ?? "活動"}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
+  };
+  const pub = (events ?? []).filter((e) => e.kind !== "officer");
+  const off = (events ?? []).filter((e) => e.kind === "officer");
+  const sent: string[] = [];
+  if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
+
+  const { data: tasks } = await db.from("tasks").select("title, due").eq("due", day).neq("status", "done");
+  const offText = [
+    off.length ? `**明天的幹部行程**\n${off.map(line).join("\n")}` : "",
+    tasks?.length ? `**明天到期的任務**\n${tasks.map((t) => `• ${t.title}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+  if (offText && await discord(hooks.officers, offText)) sent.push("officers");
+
+  return json({ ok: true, day, events: events?.length ?? 0, sent });
+});
