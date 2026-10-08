@@ -405,6 +405,9 @@ tr.inactive { opacity: .5; }
 /* ---------- 成員、設定、我的 ---------- */
 .pending .pend-row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .pending .pend-row:last-child { border: 0; }
+.batch-bar { position: sticky; top: 64px; z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 14px; background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.batch-bar span { margin-right: auto; }
+input.pick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); flex: none; cursor: pointer; }
 .pend-row .who { display: flex; gap: 10px; align-items: center; } .pend-row .who div { display: grid; }
 .sem-list, .cal-admin { list-style: none; padding: 0; margin: 10px 0; display: grid; }
 .sem-list li, .cal-admin li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 9px 0; border-bottom: 1px solid var(--line); }

@@ -40,6 +40,36 @@ async function approve(u, roles) {
   await loadShared(); render();
 }
 
+// 批次設定：一次選多人，加上或移除同樣的身分組（待核准的人一起核准）
+const sel = new Set();
+async function batchRoles(people) {
+  const chosen = people.filter((u) => sel.has(u.id));
+  if (!chosen.length) return toast('先勾選要設定的人', 'bad');
+  const v = await formDialog({ title: `批次設定 ${chosen.length} 人`, submit: '套用', fields: [
+    { name: 'mode', label: '動作', type: 'select', value: 'add', options: [['add', '加上這些身分組'], ['del', '移除這些身分組']] },
+    { name: 'roles', label: '身分組', type: 'checks', full: true, value: [], options: Object.entries(ROLE_LABEL), hint: '原本有的其他身分組不會動。選到「待核准」的人，加上身分時會一起核准。' },
+  ] });
+  if (!v) return;
+  if (!v.roles.length) return toast('至少選一個身分組', 'bad');
+  const ids = chosen.map((u) => u.id);
+  let ok = true;
+  if (v.mode === 'add') {
+    const rows = chosen.flatMap((u) => v.roles.filter((r) => !u.roles.includes(r)).map((r) => ({ user_id: u.id, role: r })));
+    if (rows.length) ok = await run(() => sb.from('user_roles').insert(rows));
+    const pend = chosen.filter((u) => u.status === 'pending').map((u) => u.id);
+    if (ok && pend.length) ok = await run(() => sb.from('profiles').update({ status: 'active' }).in('id', pend));
+  } else {
+    for (const r of v.roles) if (ok) ok = await run(() => sb.from('user_roles').delete().in('user_id', ids).eq('role', r));
+  }
+  if (!ok) { await loadShared(); return render(); }
+  if (v.roles.some((r) => r === 'officer' || r === 'admin')) {
+    await invokeFn('calendar-sync', { action: 'acl' }).catch(() => toast('身分已更新；幹部行事曆權限稍後請到設定頁重新同步', 'bad'));
+  }
+  toast(`已更新 ${chosen.length} 人`, 'ok');
+  sel.clear(); sessionStorage.setItem('mb', '0');
+  await loadShared(); render();
+}
+
 route('/members', async () => {
   const p = state.p;
   if (!p.insider) return empty('只有社內成員可以看名冊');
@@ -49,8 +79,11 @@ route('/members', async () => {
   const pending = people.filter((u) => u.status === 'pending');
   const f = sessionStorage.getItem('mf') || '';
   const showInactive = sessionStorage.getItem('mi') === '1';
+  const batch = p.admin && sessionStorage.getItem('mb') === '1';
+  if (!batch) sel.clear();
+  const box = (id) => batch ? `<input type="checkbox" class="pick" data-pick="${id}" ${sel.has(id) ? 'checked' : ''} aria-label="選取">` : '';
   const list = people.filter((u) => u.status === 'active' || (showInactive && u.status === 'inactive'))
-    .filter((u) => !f || (f === 'ringer' ? u.roles.includes('ringer') : f === 'officer' ? u.roles.some((r) => r === 'officer' || r === 'admin') : u.section === f))
+    .filter((u) => !f || (f === 'ringer' || f === 'alumni' ? u.roles.includes(f) : f === 'officer' ? u.roles.some((r) => r === 'officer' || r === 'admin') : u.section === f))
     .sort((a, b) => SECTIONS.indexOf(a.section) - SECTIONS.indexOf(b.section) || nameOf(a.id).localeCompare(nameOf(b.id)));
   setTimeout(() => {
     $$('[data-mf]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('mf', b.dataset.mf); render(); }));
@@ -60,17 +93,24 @@ route('/members', async () => {
       if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = '確定拒絕？'; return; }
       await run(() => sb.from('profiles').update({ status: 'inactive' }).eq('id', b.dataset.reject), '已拒絕'); await loadShared(); render();
     }));
-    if (p.officer) $$('[data-member]').forEach((tr) => (tr.onclick = () => { const u = people.find((x) => x.id === tr.dataset.member); editMember(u, privOf(u.id)); }));
+    $('#mb')?.addEventListener('click', () => { sessionStorage.setItem('mb', batch ? '0' : '1'); render(); });
+    const count = () => { const n = $('#sel-n'); if (n) n.textContent = sel.size; };
+    $$('[data-pick]').forEach((c) => { c.onclick = (e) => e.stopPropagation(); c.onchange = () => { c.checked ? sel.add(c.dataset.pick) : sel.delete(c.dataset.pick); count(); }; });
+    $('#sel-all')?.addEventListener('click', () => { const cs = $$('[data-pick]'); const all = cs.every((c) => c.checked); cs.forEach((c) => { c.checked = !all; c.checked ? sel.add(c.dataset.pick) : sel.delete(c.dataset.pick); }); count(); });
+    $('#sel-apply')?.addEventListener('click', () => batchRoles(people));
+    if (batch) $$('[data-member]').forEach((tr) => (tr.onclick = () => { const c = tr.querySelector('[data-pick]'); c.checked = !c.checked; c.onchange(); }));
+    else if (p.officer) $$('[data-member]').forEach((tr) => (tr.onclick = () => { const u = people.find((x) => x.id === tr.dataset.member); editMember(u, privOf(u.id)); }));
   });
   return pageHead('成員', `${list.length} 人${p.officer ? '・點一列可以編輯組別、樂器' + (p.admin ? '與身分組' : '') : ''}`,
-    p.admin ? `<button class="btn ghost sm" id="mi">${showInactive ? '隱藏停用帳號' : '顯示停用帳號'}</button>` : '') +
+    p.admin ? `<button class="btn ${batch ? 'pri' : 'line'} sm" id="mb">${batch ? '結束批次' : '批次設定身分'}</button><button class="btn ghost sm" id="mi">${showInactive ? '隱藏停用帳號' : '顯示停用帳號'}</button>` : '') +
+    (batch ? `<div class="batch-bar"><span>已選 <b id="sel-n" class="mono">${sel.size}</b> 人</span><button class="btn sm ghost" id="sel-all">全選／取消</button><button class="btn sm pri" id="sel-apply">設定身分組</button></div>` : '') +
     (p.admin && pending.length ? `<section class="card pending"><h2>等待核准 <span class="dot-n">${pending.length}</span></h2>
-      ${pending.map((u) => `<div class="pend-row"><div class="who">${avatar(u.id, 32)}<div><b>${esc(nameOf(u.id))}</b><span class="small muted">${esc(privOf(u.id)?.email || '')}</span></div></div>
-        <div class="actions"><button class="btn sm pri" data-approve="${u.id}" data-roles="member">核准為社員</button><button class="btn sm" data-approve="${u.id}" data-roles="member,newbie">新生</button><button class="btn sm" data-approve="${u.id}" data-roles="ringer">槍手</button><button class="btn sm" data-approve="${u.id}" data-roles="teacher">指導老師</button><button class="btn sm ghost danger" data-reject="${u.id}">拒絕</button></div></div>`).join('')}
+      ${pending.map((u) => `<div class="pend-row"><div class="who">${box(u.id)}${avatar(u.id, 32)}<div><b>${esc(nameOf(u.id))}</b><span class="small muted">${esc(privOf(u.id)?.email || '')}</span></div></div>
+        <div class="actions"><button class="btn sm pri" data-approve="${u.id}" data-roles="member">核准為社員</button><button class="btn sm" data-approve="${u.id}" data-roles="member,newbie">新生</button><button class="btn sm" data-approve="${u.id}" data-roles="ringer">槍手</button><button class="btn sm" data-approve="${u.id}" data-roles="alumni">校友</button><button class="btn sm" data-approve="${u.id}" data-roles="teacher">指導老師</button><button class="btn sm ghost danger" data-reject="${u.id}">拒絕</button></div></div>`).join('')}
     </section>` : '') +
-    `<div class="seg wrap"><button data-mf="" aria-pressed="${!f}">全部</button>${SECTIONS.map((s) => `<button data-mf="${s}" aria-pressed="${f === s}">${s}</button>`).join('')}<button data-mf="officer" aria-pressed="${f === 'officer'}">幹部</button><button data-mf="ringer" aria-pressed="${f === 'ringer'}">槍手</button></div>` +
-    (list.length ? `<div class="tbl-wrap"><table class="${p.officer ? 'click' : ''}"><thead><tr><th>成員</th><th>組別</th><th>樂器</th><th>身分</th>${p.officer ? '<th>Email</th>' : ''}</tr></thead><tbody>
-      ${list.map((u) => `<tr data-member="${u.id}" class="${u.status === 'inactive' ? 'inactive' : ''}"><td><span class="person">${avatar(u.id, 24)}<b>${esc(nameOf(u.id))}</b>${u.real_name && u.real_name !== u.display_name ? `<span class="muted small">${esc(u.real_name)}</span>` : ''}</span></td>
+    `<div class="seg wrap"><button data-mf="" aria-pressed="${!f}">全部</button>${SECTIONS.map((s) => `<button data-mf="${s}" aria-pressed="${f === s}">${s}</button>`).join('')}<button data-mf="officer" aria-pressed="${f === 'officer'}">幹部</button><button data-mf="ringer" aria-pressed="${f === 'ringer'}">槍手</button><button data-mf="alumni" aria-pressed="${f === 'alumni'}">校友</button></div>` +
+    (list.length ? `<div class="tbl-wrap"><table class="${p.officer || batch ? 'click' : ''}"><thead><tr><th>成員</th><th>組別</th><th>樂器</th><th>身分</th>${p.officer ? '<th>Email</th>' : ''}</tr></thead><tbody>
+      ${list.map((u) => `<tr data-member="${u.id}" class="${u.status === 'inactive' ? 'inactive' : ''}"><td><span class="person">${box(u.id)}${avatar(u.id, 24)}<b>${esc(nameOf(u.id))}</b>${u.real_name && u.real_name !== u.display_name ? `<span class="muted small">${esc(u.real_name)}</span>` : ''}</span></td>
         <td>${sectionChip(u.section)}</td><td class="small">${esc(u.instruments)}</td><td class="chips">${roleChips(u.roles)}${u.officer_title ? `<span class="chip gold">${esc(u.officer_title)}</span>` : ''}</td>
         ${p.officer ? `<td class="small muted">${esc(privOf(u.id)?.email || '')}</td>` : ''}</tr>`).join('')}
     </tbody></table></div>` : empty('這個分類沒有成員'));
