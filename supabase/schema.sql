@@ -34,9 +34,13 @@ create table if not exists public.profile_private (
 
 create table if not exists public.user_roles (
   user_id uuid references public.profiles(id) on delete cascade,
-  role text not null check (role in ('admin','officer','leader','member','newbie','ringer','teacher')),
+  role text not null check (role in ('admin','officer','leader','member','newbie','ringer','teacher','alumni')),
   primary key (user_id, role)
 );
+-- 校友：看得到社內資訊；只有排進當天編制才算出席
+alter table public.user_roles drop constraint if exists user_roles_role_check;
+alter table public.user_roles add constraint user_roles_role_check
+  check (role in ('admin','officer','leader','member','newbie','ringer','teacher','alumni'));
 
 -- ---------------------------------------------------------------------
 -- 2. 學期與設定
@@ -395,7 +399,7 @@ $$;
 create or replace function public.is_insider() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_active() and exists (select 1 from user_roles where user_id = auth.uid()
-    and role in ('admin','officer','leader','member','newbie','teacher'))
+    and role in ('admin','officer','leader','member','newbie','teacher','alumni'))
 $$;
 create or replace function public.my_section() returns text
 language sql stable security definer set search_path = public as $$
@@ -447,6 +451,11 @@ begin
   select value into rules from settings where key = 'attendance_rules';
   is_ringer_only := not exists (select 1 from user_roles where user_id = uid
     and role in ('admin','officer','leader','member','newbie'));
+  -- 只有校友身分：排進當天曲目編制才算
+  if is_ringer_only and exists (select 1 from user_roles where user_id = uid and role = 'alumni') then
+    return has_pieces and exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
+      join part_assignments pa on pa.part_id = pp.id where ep.event_id = e.id and pa.user_id = uid);
+  end if;
   if is_ringer_only and not coalesce((rules->>'count_ringers')::boolean, false) then return false; end if;
   -- 複選類型：符合其中任一種就算應出席
   foreach k in array (case when cardinality(e.kinds) > 0 then e.kinds else array[e.kind] end) loop

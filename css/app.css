@@ -244,7 +244,7 @@ dialog[open] { animation: pop .18s cubic-bezier(.2,.8,.2,1); }
 .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .chip + .chip::before { content: "・"; color: var(--line); margin-right: 2px; }
 .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); font-weight: 500; } .chip.acc { color: var(--accent); } .chip.gold { color: var(--gold); }
-.chip.role-admin, .chip.role-officer { color: var(--gold); } .chip.role-leader { color: var(--accent); } .chip.role-ringer { color: var(--jade); }
+.chip.role-admin, .chip.role-officer { color: var(--gold); } .chip.role-leader { color: var(--accent); } .chip.role-ringer { color: var(--jade); } .chip.role-alumni { color: var(--muted); }
 .chip.st-accepted { color: var(--ok); } .chip.st-declined { color: var(--bad); } .chip.st-contacting { color: var(--warn); }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .sec { font: 700 13px var(--f-kai); letter-spacing: .08em; --c: var(--muted); color: var(--c); white-space: nowrap; }

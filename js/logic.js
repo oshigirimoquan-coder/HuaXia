@@ -2,7 +2,7 @@
 export const TZ = 'Asia/Taipei';
 export const SECTIONS = ['吹管', '拉弦', '彈撥', '打擊', '低音'];
 export const ROLE_LABEL = {
-  admin: '管理員', officer: '幹部', leader: '組長', member: '社員', newbie: '新生', ringer: '槍手', teacher: '指導老師',
+  admin: '管理員', officer: '幹部', leader: '組長', member: '社員', newbie: '新生', ringer: '槍手', teacher: '指導老師', alumni: '校友',
 };
 export const KIND_LABEL = {
   tutti: '大團', sizhu: '絲竹', extra: '加練', sectional: '分部課', class: '教學班',
@@ -18,7 +18,7 @@ export function perms(roles, active = true) {
   const r = new Set(active ? roles : []);
   const admin = r.has('admin');
   const officer = admin || r.has('officer');
-  const insider = ['admin', 'officer', 'leader', 'member', 'newbie', 'teacher'].some((x) => r.has(x));
+  const insider = ['admin', 'officer', 'leader', 'member', 'newbie', 'teacher', 'alumni'].some((x) => r.has(x));
   return {
     admin, officer, insider,
     staff: officer || r.has('teacher'),

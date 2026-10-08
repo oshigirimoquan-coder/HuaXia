@@ -232,3 +232,18 @@ test('Discord ID 對照只有後端能查，一般登入者不能呼叫', async 
 test('別人看不到我的手機與信箱', async () => {
   assert.equal((await as(B, `select * from profile_private where user_id='${A}'`)).rows.length, 0);
 });
+
+test('校友：看得到社內行程；只有排進當天編制才算應出席', async () => {
+  const AL = '00000000-0000-0000-0000-0000000000a1';
+  await db.exec(`insert into auth.users values ('${AL}','al@x','{}')`);
+  await as(A, `update profiles set status='active' where id='${AL}'; insert into user_roles values ('${AL}','alumni');
+    insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+      ('${E(9)}','${S}',array['tutti'],'大團（泰芙努特）','2026-11-03 19:30+08','2026-11-03 21:30+08','tutti');
+    insert into event_pieces values ('${E(9)}','${P1}');`);
+  assert.ok((await as(AL, `select id from events where id='${E(1)}'`)).rows.length === 1);
+  const exp = async (n) => (await as(A, `select public.is_expected(e, '${AL}') as ok from events e where e.id='${E(n)}'`)).rows[0].ok;
+  assert.equal(await exp(1), false);  // 沒排曲目的大團：不算
+  assert.equal(await exp(9), false);  // 有曲目但沒排到他
+  await as(A, `insert into part_assignments (part_id,user_id) values ('${PT1}','${AL}')`);
+  assert.equal(await exp(9), true);   // 排進編制就算
+});
