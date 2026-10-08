@@ -196,6 +196,7 @@ route('/events/:id', async ({ id }) => {
       <div class="card-head"><h2>點名 <span class="muted small">應到 ${exp.length} 人</span></h2>
         <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
         <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
+      <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。</p>
       ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${r.leave_type === 'leave' ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';

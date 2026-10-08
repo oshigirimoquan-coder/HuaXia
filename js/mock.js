@@ -46,7 +46,7 @@ function fixtures() {
     profiles, user_roles,
     profile_private: profiles.map((p, i) => ({ user_id: p.id, email: `member${i + 1}@example.com`, google_email: null, phone: '' })),
     semesters: [{ id: 's1', name: '114-1', starts_on: '2026-09-01', ends_on: '2027-01-31', is_current: true }],
-    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, excused_mode: 'absent', count_ringers: false } }, { key: 'notify', value: { channel: 'discord' } }],
+    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'notify', value: { channel: 'discord' } }],
     private_settings: [],
     calendars: [['tutti', '華夏｜全團練習與演出', 'insiders', null], ['sec-bow', '華夏｜拉弦分部課', 'section', '拉弦'], ['sec-wind', '華夏｜吹管分部課', 'section', '吹管'], ['class', '華夏｜教學班', 'class', null], ['ringers', '華夏｜槍手行程', 'ringers', null], ['officers', '華夏｜幹部', 'officers', null]]
       .map(([key, name, audience, section], i) => ({ key, name, audience, section, gcal_id: `demo-${key}@group.calendar.google.com`, sort: i })),
@@ -80,6 +80,10 @@ function fixtures() {
       { id: 'g1', name: '蘇晏', school: '師大', instruments: '中阮', contact_user_id: uid(7), contact_info: 'IG：@demo', status: 'accepted', note: '只有週末能來', user_id: uid(11), created_at: at(-20, '10:00') },
       { id: 'g2', name: '范以晴', school: '北科', instruments: '高笙', contact_user_id: uid(8), contact_info: '', status: 'contacting', note: '', user_id: null, created_at: at(-15, '10:00') },
       { id: 'g3', name: '游佳', school: '北藝', instruments: '揚琴', contact_user_id: uid(3), contact_info: '', status: 'declined', note: '公演那週有比賽', user_id: null, created_at: at(-12, '10:00') },
+    ],
+    applications: [
+      { id: 'ap1', name: '吳小芸', grade: '資管一', contact: 'IG：@xiaoyun', experience: 'none', instruments_played: '', interests: ['拉弦'], want_class: true, message: '想學二胡！', status: 'new', officer_note: '', created_at: at(-1, '21:30') },
+      { id: 'ap2', name: '林子豪', grade: '經濟二', contact: 'LINE：tzuhao', experience: 'basic', instruments_played: '國中學過笛子', interests: ['吹管'], want_class: false, message: '', status: 'contacted', officer_note: '10/7 已傳 LINE', created_at: at(-3, '12:10') },
     ],
     scores: [{ id: 'sc1', piece_id: 'p1', part_id: 'pp1', title: '二胡I 分譜', file_path: 'demo.pdf', audio_url: 'https://example.com' }],
   };
@@ -182,7 +186,8 @@ const RPC = {
     return DB.profiles.filter((p) => p.status === 'active' && rolesOf(p.id).some((r) => ['admin', 'officer', 'leader', 'member', 'newbie'].includes(r))).map((p) => {
       const cells = DB.events.filter((e) => expected(e, p.id)).map((e) => cell(e, p.id)).filter((c) => c.status !== 'na');
       const n = (s) => cells.filter((c) => c.status === s).length;
-      const done = cells.filter((c) => c.marked).length, att = n('present') + n('late') + n('early');
+      const wt = (c) => c.status === 'present' ? 1 : c.status === 'late' ? (c.l?.type === 'late' ? 1 : 0.5) : c.status === 'early' ? (c.l?.type === 'early' ? 1 : 0.5) : 0;
+      const done = cells.filter((c) => c.marked).length, att = cells.reduce((s, c) => s + wt(c), 0);
       return { user_id: p.id, expected_total: cells.length, expected_so_far: done, attended: att, present: n('present'), late: n('late'), early: n('early'), excused: n('excused'), absent: n('absent'),
         current_rate: done ? Math.round((att / done) * 1000) / 10 : null, total_rate: cells.length ? Math.round((att / cells.length) * 1000) / 10 : null };
     });

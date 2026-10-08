@@ -41,7 +41,7 @@ route('/attendance', async () => {
     `<section class="card me-att"><div class="rings bign">${rateRing(mine?.current_rate ?? null, '目前')}${rateRing(mine?.total_rate ?? null, '整學期')}</div>
       <div class="me-att-detail"><h2>我的紀錄</h2>${await detail(me())}</div></section>` +
     (others.length ? `<section class="card">
-      <div class="card-head"><h2>${p.officer ? '全團' : '組員'}出席率</h2><span class="muted small">晚到算 ${rules.late_weight ?? 1} 次、早退算 ${rules.early_weight ?? 1} 次・請假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}</span></div>
+      <div class="card-head"><h2>${p.officer ? '全團' : '組員'}出席率</h2><span class="muted small">晚到／早退有預告算 ${rules.late_weight ?? 1} 次、沒預告算 ${rules.unexcused_weight ?? 0.5} 次・請假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}</span></div>
       ${p.officer ? `<div class="sec-bars">${bySec.map(([s, r, n]) => `<div class="sec-bar"><span>${sectionChip(s)}</span><div class="bar"><i class="rate-${rateLevel(r)}" style="width:${r ?? 0}%"></i></div><span class="mono small">${r == null ? '—' : Math.round(r) + '%'}</span></div>`).join('')}</div>
       <div class="seg wrap"><button data-sec="" aria-pressed="${!secF}">全部</button>${SECTIONS.map((s) => `<button data-sec="${s}" aria-pressed="${secF === s}">${s}</button>`).join('')}</div>` : ''}
       <div class="tbl-wrap"><table class="att-tbl click"><thead><tr><th>成員</th><th>目前</th><th>整學期</th><th>出席</th><th>晚到</th><th>早退</th><th>請假</th><th>缺席</th></tr></thead><tbody>

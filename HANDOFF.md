@@ -13,6 +13,13 @@
 - 尚未驗證（需要真實帳號）：Google 行事曆同步、Discord 登入、Discord webhook、每日提醒排程、Storage 上傳下載。
 - 本輪自行決定：Email＋密碼為備用登入；出席率「目前」只算已點名場次；未點名場次不算缺席；示範模式用虛構姓名。
 
+## 2026-10-08 更新
+- 社長決定：只發 DC；晚到早退有預告算 1、沒預告算 0.5（設定頁 unexcused_weight）；招生報名表要做；公演清單用公告。
+- 新增：`applications` 表（匿名可在開放期間送出）、`#/join` 公開報名頁、「招生」管理頁、`settings.recruit_open`。
+- 介面改版：石青石綠、楷書標題、行書動態標誌（`js/mark.js`，Yuji Syuku 字形，OFL）。
+- 驗證：`npm test` 25/25；Playwright 桌機／手機截圖無橫向捲動、無 JS 錯誤。
+- 上線前要在 Supabase 重新執行一次 `supabase/schema.sql`（可重複執行，不會刪資料）。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。

@@ -375,6 +375,13 @@ tr.inactive { opacity: .5; }
 .cal-sec-wind { background: var(--s-wind); } .cal-sec-bow { background: var(--s-bow); } .cal-sec-pluck { background: var(--s-pluck); }
 .cal-sec-perc { background: var(--s-perc); } .cal-sec-bass { background: var(--s-bass); } .cal-officers { background: var(--gold); } .cal-ringers { background: var(--jade); } .cal-class { background: var(--bad); }
 
+/* ---------- 招生報名 ---------- */
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.checks-field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
+.checks-field legend { font-size: 13px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.join .auth-card { width: min(480px, 100%); }
+.join .auth-box { text-align: left; }
+
 /* ---------- 登入 ---------- */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
 .auth-card { width: min(420px, 100%); display: grid; gap: 14px; text-align: center; justify-items: center; }

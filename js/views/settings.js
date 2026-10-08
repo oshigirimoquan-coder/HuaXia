@@ -9,7 +9,6 @@ route('/settings', async () => {
   const { data: pd } = await sb.from('private_settings').select('*').eq('key', 'discord').maybeSingle();
   const hooks = pd?.value || {};
   const rules = state.settings.attendance_rules || {};
-  const notify = state.settings.notify || { channel: 'discord' };
 
   setTimeout(() => {
     $('#team')?.addEventListener('submit', async (e) => {
@@ -35,7 +34,7 @@ route('/settings', async () => {
     }));
     $('#rules')?.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
-      const v = { late_weight: Number(f.get('late')), early_weight: Number(f.get('early')), excused_mode: f.get('excused'), count_ringers: f.get('ringers') === 'on' };
+      const v = { late_weight: Number(f.get('late')), early_weight: Number(f.get('early')), unexcused_weight: Number(f.get('unexcused')), excused_mode: f.get('excused'), count_ringers: f.get('ringers') === 'on' };
       if (await setVal('attendance_rules', v)) { toast('出席規則已更新', 'ok'); await loadShared(); }
     });
     $('#notify')?.addEventListener('submit', async (e) => {
@@ -44,7 +43,7 @@ route('/settings', async () => {
       const bad = [value.announce, value.officers, ...Object.values(value.sections)].filter((u) => u && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(u));
       if (bad.length) return toast('Webhook 網址格式不對，應以 https://discord.com/api/webhooks/ 開頭', 'bad');
       const a = await run(() => sb.from('private_settings').upsert({ key: 'discord', value }));
-      const b = await setVal('notify', { channel: f.get('channel') });
+      const b = await setVal('notify', { channel: 'discord' });
       if (a && b) { toast('通知設定已儲存', 'ok'); await loadShared(); }
     });
     $('#cal-setup')?.addEventListener('click', async (e) => {
@@ -67,21 +66,18 @@ route('/settings', async () => {
       <p class="small muted">行程、出席率、教學班都歸屬某個學期。換學期時新增一個並設為目前學期，舊學期資料會保留成紀錄。</p>
       ${state.semesters.length ? `<ul class="sem-list">${state.semesters.map((s) => `<li><b>${esc(s.name)}</b><span class="mono small muted">${s.starts_on} – ${s.ends_on}</span>${s.is_current ? '<span class="chip ok">目前學期</span>' : `<button class="btn sm ghost" data-cur="${s.id}">設為目前</button>`}</li>`).join('')}</ul>` : '<p class="callout">還沒有學期。先新增一個，才能建立行程。</p>'}</section>
 
-    <section class="card"><h2>出席率規則 <span class="chip warn">待社長確認</span></h2>
+    <section class="card"><h2>出席率規則</h2>
       <form id="rules" class="grid-form">
-        <label>晚到算幾次出席<input name="late" type="number" step="0.5" min="0" max="1" value="${rules.late_weight ?? 1}"></label>
-        <label>早退算幾次出席<input name="early" type="number" step="0.5" min="0" max="1" value="${rules.early_weight ?? 1}"></label>
+        <label>有事先預告的晚到，算幾次出席<input name="late" type="number" step="0.5" min="0" max="1" value="${rules.late_weight ?? 1}"></label>
+        <label>有事先預告的早退，算幾次出席<input name="early" type="number" step="0.5" min="0" max="1" value="${rules.early_weight ?? 1}"></label>
+        <label>沒預告的晚到或早退，算幾次出席<input name="unexcused" type="number" step="0.5" min="0" max="1" value="${rules.unexcused_weight ?? 0.5}"></label>
         <label>請假的場次<select name="excused"><option value="absent" ${rules.excused_mode !== 'exclude' ? 'selected' : ''}>算缺席（列入分母）</option><option value="exclude" ${rules.excused_mode === 'exclude' ? 'selected' : ''}>不列入計算</option></select></label>
         <label class="check"><input name="ringers" type="checkbox" ${rules.count_ringers ? 'checked' : ''}><span>槍手也計算出席率</span></label>
         <button class="btn">儲存規則</button>
-      </form><p class="small muted">1 = 算一次完整出席，0.5 = 算半次，0 = 不算。修改後所有人的出席率會立刻重新計算。</p></section>
+      </form><p class="small muted">1 = 算一次完整出席，0.5 = 算半次，0 = 不算。「事先預告」指本人在行程頁用請假功能選了晚到或早退。沒排到當天曲目的人自動算無曲，不列入計算。修改後所有人的出席率會立刻重新計算。</p></section>
 
-    <section class="card"><h2>通知 <span class="chip warn">待社長決定管道</span></h2>
+    <section class="card"><h2>Discord 通知</h2>
       <form id="notify" class="grid-form">
-        <label class="full">公告與行程通知要發到<select name="channel">
-          <option value="discord" ${notify.channel === 'discord' ? 'selected' : ''}>Discord</option>
-          <option value="email" ${notify.channel === 'email' ? 'selected' : ''}>Gmail（尚未接上）</option>
-          <option value="both" ${notify.channel === 'both' ? 'selected' : ''}>兩者都發</option></select></label>
         <label class="full">公告頻道 Webhook<input name="announce" value="${esc(hooks.announce || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
         <label class="full">幹部頻道 Webhook<input name="officers" value="${esc(hooks.officers || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
         ${SECTIONS.map((s) => `<label>${s}組頻道（選填）<input name="s-${s}" value="${esc(hooks.sections?.[s] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}

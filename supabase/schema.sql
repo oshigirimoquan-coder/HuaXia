@@ -58,10 +58,14 @@ create table if not exists public.settings (
 insert into public.settings (key, value) values
   ('team_name', '"華夏國樂社"'),
   -- 出席率規則（待社長確認後由管理員調整）
-  ('attendance_rules', '{"late_weight":1,"early_weight":1,"excused_mode":"absent","count_ringers":false}'),
+  ('attendance_rules', '{"late_weight":1,"early_weight":1,"unexcused_weight":0.5,"excused_mode":"absent","count_ringers":false}'),
+  ('recruit_open', 'false'),
   -- 公告通知管道（待社長決定 discord / email / both）
   ('notify', '{"channel":"discord"}')
 on conflict (key) do nothing;
+-- 舊資料補上「未預告晚到早退」的權重（重複執行不會覆蓋已調整的值）
+update public.settings set value = '{"unexcused_weight":0.5}'::jsonb || value
+  where key = 'attendance_rules' and not value ? 'unexcused_weight';
 
 -- 只有管理員與後端看得到的設定（Discord webhook 網址等）
 create table if not exists public.private_settings (
@@ -294,6 +298,24 @@ create table if not exists public.report_feedback (
   created_at timestamptz not null default now()
 );
 
+-- ---------------------------------------------------------------------
+-- 9. 招生報名（公開表單，免登入）
+-- ---------------------------------------------------------------------
+create table if not exists public.applications (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 1 and 40),
+  grade text not null check (char_length(grade) between 1 and 40),
+  contact text not null check (char_length(contact) between 1 and 120),
+  experience text not null default 'none' check (experience in ('none','some','basic')),
+  instruments_played text not null default '' check (char_length(instruments_played) <= 120),
+  interests text[] not null default '{}',
+  want_class boolean not null default false,
+  message text not null default '' check (char_length(message) <= 1000),
+  status text not null default 'new' check (status in ('new','contacted','joined','declined')),
+  officer_note text not null default '',
+  created_at timestamptz not null default now()
+);
+
 -- =====================================================================
 -- 身分判斷函式
 -- =====================================================================
@@ -405,22 +427,24 @@ begin
 end $$;
 
 -- 出席率統計（目前／整學期）
+-- 晚到／早退：有事先預告（請假系統選了晚到或早退）算 late_weight／early_weight，沒預告算 unexcused_weight
 create or replace function public.attendance_stats(sem uuid)
 returns table (user_id uuid, expected_total int, expected_so_far int, attended numeric,
   present int, late int, early int, excused int, absent int, current_rate numeric, total_rate numeric)
 language plpgsql stable security definer set search_path = public as $$
-declare rules jsonb; lw numeric; ew numeric; exclude_excused boolean;
+declare rules jsonb; lw numeric; ew numeric; uw numeric; exclude_excused boolean;
 begin
   select value into rules from settings where key = 'attendance_rules';
   lw := coalesce((rules->>'late_weight')::numeric, 1);
   ew := coalesce((rules->>'early_weight')::numeric, 1);
+  uw := coalesce((rules->>'unexcused_weight')::numeric, 0.5);
   exclude_excused := coalesce(rules->>'excused_mode', 'absent') = 'exclude';
   return query
   with ev as (
     select e as erow, e.id as eid, exists (select 1 from attendance a where a.event_id = e.id) as marked
     from events e where e.semester_id = sem and e.counts_attendance
   ), cells as (
-    select p.id as uid, ev.marked,
+    select p.id as uid, ev.marked, l.type as lt,
       coalesce(a.status, case when ev.marked then
         case when l.type = 'leave' then 'excused' else 'absent' end end) as st
     from profiles p cross join ev
@@ -430,23 +454,30 @@ begin
       and (public.is_officer() or p.id = auth.uid() or public.leads_user(p.id))
       and public.is_expected(ev.erow, p.id)
       and coalesce(a.status, '') <> 'na'
+  ), w as (
+    select cells.*, case st
+      when 'present' then 1::numeric
+      when 'late' then case when lt = 'late' then lw else uw end
+      when 'early' then case when lt = 'early' then ew else uw end
+      else 0::numeric end as wt
+    from cells
   ), agg as (
     select uid,
       count(*)::int as exp_total,
       count(*) filter (where marked and not (exclude_excused and st = 'excused'))::int as exp_now,
+      coalesce(sum(wt), 0) as got,
       count(*) filter (where st = 'present')::int as n_present,
       count(*) filter (where st = 'late')::int as n_late,
       count(*) filter (where st = 'early')::int as n_early,
       count(*) filter (where st = 'excused')::int as n_excused,
       count(*) filter (where st = 'absent')::int as n_absent,
       count(*) filter (where not marked and not (exclude_excused and st = 'excused'))::int as future
-    from cells group by uid
+    from w group by uid
   )
-  select uid, exp_total - case when exclude_excused then n_excused else 0 end, exp_now,
-    (n_present + n_late * lw + n_early * ew)::numeric,
+  select uid, exp_total - case when exclude_excused then n_excused else 0 end, exp_now, got,
     n_present, n_late, n_early, n_excused, n_absent,
-    case when exp_now > 0 then round((n_present + n_late * lw + n_early * ew) / exp_now * 100, 1) end,
-    case when (exp_now + future) > 0 then round((n_present + n_late * lw + n_early * ew) / (exp_now + future) * 100, 1) end
+    case when exp_now > 0 then round(got / exp_now * 100, 1) end,
+    case when (exp_now + future) > 0 then round(got / (exp_now + future) * 100, 1) end
   from agg;
 end $$;
 
@@ -547,7 +578,7 @@ do $$ declare t text; p record; begin
   foreach t in array array['profiles','profile_private','user_roles','semesters','settings','private_settings',
     'calendars','pieces','piece_parts','ringers','part_assignments','scores','classes','class_students',
     'class_milestones','class_progress','events','event_pieces','leave_requests','attendance',
-    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback'] loop
+    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback','applications'] loop
     execute format('alter table public.%I enable row level security', t);
     for p in select policyname from pg_policies where schemaname = 'public' and tablename = t loop
       execute format('drop policy %I on public.%I', p.policyname, t);
@@ -651,6 +682,15 @@ create policy rep_own on public.practice_reports for all using (user_id = auth.u
 create policy fb_read on public.report_feedback for select using (public.can_see_report(report_id));
 create policy fb_insert on public.report_feedback for insert with check (author = auth.uid() and public.can_see_report(report_id));
 create policy fb_delete on public.report_feedback for delete using (author = auth.uid() or public.is_officer());
+
+-- 招生：開放報名期間任何人都能送出；只有幹部看得到與處理
+create policy app_submit on public.applications for insert to anon, authenticated with check (
+  status = 'new' and officer_note = ''
+  and coalesce((select (value)::text = 'true' from public.settings where key = 'recruit_open'), false));
+create policy app_officer on public.applications for select using (public.is_officer());
+create policy app_officer_upd on public.applications for update using (public.is_officer()) with check (public.is_officer());
+create policy app_officer_del on public.applications for delete using (public.is_officer());
+create policy set_read_recruit on public.settings for select to anon using (key = 'recruit_open');
 
 -- =====================================================================
 -- 樂譜檔案（Storage）

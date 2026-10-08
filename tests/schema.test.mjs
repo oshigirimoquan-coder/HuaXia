@@ -27,12 +27,12 @@ before(async () => {
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true),'')::uuid $$;
     create table storage.buckets (id text primary key, name text, public boolean);
     create table storage.objects (id uuid default gen_random_uuid(), bucket_id text, name text);
-    create role authenticated;`);
+    create role authenticated; create role anon;`);
   const sql = fs.readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8').replace(/create extension[^;]+;/, '');
   await db.exec(sql);
   await db.exec(sql); // 可以重複執行
-  await db.exec(`grant usage on schema public, auth, storage to authenticated; grant all on all tables in schema public, storage to authenticated;
-    grant execute on all functions in schema public, auth to authenticated;`);
+  await db.exec(`grant usage on schema public, auth, storage to authenticated, anon; grant all on all tables in schema public, storage to authenticated, anon;
+    grant execute on all functions in schema public, auth to authenticated, anon;`);
   await db.exec(`insert into auth.users values ('${A}','a@x','{"full_name":"社長"}'),('${B}','b@x','{"name":"阿B"}'),('${R}','r@x','{}')`);
   await as(A, `update profiles set status='active', section='拉弦' where id='${B}'; insert into user_roles values ('${B}','member');
     update profiles set status='active' where id='${R}'; insert into user_roles values ('${R}','ringer');
@@ -70,13 +70,22 @@ test('不能移除最後一位管理員', async () => {
   assert.match((await as(A, `delete from user_roles where user_id='${A}' and role='admin'`)).error, /至少要有一位管理員/);
 });
 
-test('出席率：晚到算出席、請假算缺席、沒排到曲目的場次自動無曲', async () => {
+test('出席率：沒預告的晚到算 0.5、請假算缺席、沒排到曲目的場次自動無曲', async () => {
   const { rows } = await as(A, `select * from attendance_stats('${S}')`);
   const b = rows.find((r) => r.user_id === B);
   assert.equal(b.expected_total, 3);      // E1、E2、E4（E3 無曲）
   assert.equal(b.expected_so_far, 2);     // 已點名的 E1、E2
   assert.equal(b.late, 1);
   assert.equal(b.excused, 1);
+  assert.equal(Number(b.attended), 0.5);  // E1 晚到但沒事先預告
+  assert.equal(Number(b.current_rate), 25);
+});
+
+test('事先預告晚到的話，晚到算 1 次出席', async () => {
+  await as(B, `insert into leave_requests (event_id,type,reason) values ('${E(1)}','late','家教')`);
+  const { rows } = await as(A, `select * from attendance_stats('${S}')`);
+  const b = rows.find((r) => r.user_id === B);
+  assert.equal(Number(b.attended), 1);
   assert.equal(Number(b.current_rate), 50);
 });
 
@@ -111,6 +120,21 @@ test('樂譜只看得到自己的聲部', async () => {
   await as(A, `insert into scores (piece_id,part_id,title,file_path) values ('${P1}','${PT1}','二胡I譜','a'),('${P2}','${PT2}','高胡譜','b')`);
   assert.deepEqual((await as(B, `select title from scores`)).rows.map((r) => r.title), ['二胡I譜']);
   assert.deepEqual((await as(R, `select title from scores`)).rows.map((r) => r.title), ['高胡譜']);
+});
+
+test('招生：開放報名時，沒登入的人可以送出，但看不到別人的報名', async () => {
+  await as(A, `update settings set value = 'true' where key='recruit_open'`);
+  const ins = await as('', `set role anon; insert into applications (name, grade, contact) values ('新同學','資管一','IG: abc')`);
+  assert.equal(ins.error, undefined);
+  assert.equal((await as('', `set role anon; select * from applications`)).rows.length, 0);
+  assert.equal((await as(B, `select * from applications`)).rows.length, 0);
+  assert.equal((await as(A, `select name from applications`)).rows[0].name, '新同學');
+});
+
+test('招生：關閉報名後不能送出', async () => {
+  await as(A, `update settings set value = 'false' where key='recruit_open'`);
+  const ins = await as('', `set role anon; insert into applications (name, grade, contact) values ('晚來的','財管一','x')`);
+  assert.match(ins.error, /row-level security/);
 });
 
 test('別人看不到我的手機與信箱', async () => {

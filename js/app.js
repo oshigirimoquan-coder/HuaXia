@@ -11,6 +11,7 @@ import './views/ringers.js';
 import './views/members.js';
 import './views/settings.js';
 import './views/me.js';
+import { joinScreen } from './views/recruit.js';
 
 const NAV = [
   { path: '/', label: '首頁', main: true },
@@ -22,6 +23,7 @@ const NAV = [
   { path: '/teaching', label: '教學', show: (p) => p.insider },
   { path: '/members', label: '成員', show: (p) => p.insider },
   { path: '/ringers', label: '槍手', show: (p) => p.officer },
+  { path: '/recruit', label: '招生', show: (p) => p.officer },
   { path: '/settings', label: '設定', show: (p) => p.admin },
   { path: '/me', label: '我的設定', mobileOnly: true },
 ];
@@ -128,7 +130,9 @@ function setupScreen() {
 }
 
 // ---------- 啟動 ----------
+const isJoin = () => location.hash.startsWith('#/join');
 async function boot() {
+  if (isJoin()) return joinScreen();
   if (!state.session) {
     const { data } = await sb.from('settings').select('*').eq('key', 'team_name').maybeSingle();
     if (data) state.settings.team_name = data.value;
@@ -152,7 +156,7 @@ async function boot() {
       state.session = s;
       if (before !== after) boot();
     });
-    window.addEventListener('hashchange', () => { if (state.profile?.status === 'active') render(); });
+    window.addEventListener('hashchange', () => { if (isJoin()) return joinScreen(); if (!$('#main')) return boot(); if (state.profile?.status === 'active') render(); });
     await boot();
   } catch (e) {
     console.error(e);
