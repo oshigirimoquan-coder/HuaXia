@@ -28,6 +28,18 @@ export async function loadMe() {
   state.profile = profile;
   state.roles = (roles || []).map((r) => r.role);
   state.p = perms(state.roles, profile?.status === 'active');
+  // 用 Email 登入但綁過 Discord、還沒有頭像的人：自動換成 DC 頭像
+  if (profile && !profile.avatar_url) {
+    const url = await discordAvatar();
+    if (url && !(await sb.from('profiles').update({ avatar_url: url }).eq('id', uid)).error) profile.avatar_url = url;
+  }
+}
+
+// 已綁定的 Discord 帳號頭像網址；沒有綁就回傳 null
+export async function discordAvatar() {
+  const ids = (await sb.auth.getUserIdentities?.().catch(() => null))?.data?.identities || [];
+  const d = ids.find((i) => i.provider === 'discord');
+  return d?.identity_data?.avatar_url || null;
 }
 
 export async function loadShared() {

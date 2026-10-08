@@ -411,7 +411,7 @@ tr.inactive { opacity: .5; }
 .sem-list li:last-child, .cal-admin li:last-child { border: 0; }
 .cal-admin li span:first-child { flex: 1; }
 .settings .card h2 { display: flex; gap: 10px; align-items: baseline; }
-.me-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; } .me-head > div { flex: 1; min-width: 160px; } .me-head h2 { margin-bottom: 6px; }
+.me-head { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; } .me-head > div:not(.actions) { flex: 1; min-width: 160px; } .me-head h2 { margin-bottom: 6px; }
 .cal-btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .cal-btn .plus { color: var(--accent); font-weight: 700; }
 .cal-dot { width: 8px; height: 8px; transform: rotate(45deg); background: var(--accent); }

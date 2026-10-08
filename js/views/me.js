@@ -1,4 +1,4 @@
-import { sb, state, me, route, esc, run, toast, pageHead, avatar, nameOf, sectionChip, roleChips, render, $, loadShared } from '../core.js';
+import { sb, state, me, route, esc, run, toast, pageHead, avatar, nameOf, sectionChip, roleChips, render, $, loadShared, discordAvatar } from '../core.js';
 import { calendarsFor } from '../logic.js';
 
 route('/me', async () => {
@@ -8,6 +8,8 @@ route('/me', async () => {
   const ids = (await sb.auth.getUserIdentities().catch(() => null))?.data?.identities || [];
   const hasDiscord = ids.some((i) => i.provider === 'discord');
   const hasEmail = ids.some((i) => i.provider === 'email');
+  const dcAvatar = await discordAvatar();
+  const canUseDc = dcAvatar && dcAvatar !== u?.avatar_url;
   setTimeout(() => {
     $('#link-discord')?.addEventListener('click', async () => {
       const r = await sb.auth.linkIdentity({ provider: 'discord', options: { redirectTo: location.origin + location.pathname + '#/me' } });
@@ -20,10 +22,15 @@ route('/me', async () => {
       if (a && b) { toast('已儲存', 'ok'); await loadShared(); state.profile = { ...state.profile, display_name: f.get('display_name').trim() }; render(); }
     });
     $('#logout')?.addEventListener('click', () => sb.auth.signOut());
+    $('#use-dc-avatar')?.addEventListener('click', async () => {
+      if (await run(() => sb.from('profiles').update({ avatar_url: dcAvatar }).eq('id', me()), '已換成 Discord 頭像')) {
+        state.profile = { ...state.profile, avatar_url: dcAvatar }; await loadShared(); location.reload();
+      }
+    });
   });
   return pageHead('我的設定') +
     `<section class="card me-head">${avatar(me(), 56)}<div><h2>${esc(nameOf(me()))}</h2><div class="chips">${sectionChip(u?.section)}${roleChips(state.roles)}${u?.officer_title ? `<span class="chip gold">${esc(u.officer_title)}</span>` : ''}</div></div>
-      <button class="btn ghost" id="logout">登出</button></section>
+      <div class="actions">${canUseDc ? '<button class="btn sm" id="use-dc-avatar">使用 Discord 頭像</button>' : ''}<button class="btn ghost" id="logout">登出</button></div></section>
 
     <section class="card"><h2>登入方式</h2>
       <p class="small">目前可用：${[hasDiscord && 'Discord', hasEmail && 'Email ＋ 密碼'].filter(Boolean).join('、') || '—'}</p>

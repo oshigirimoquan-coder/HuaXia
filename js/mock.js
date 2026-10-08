@@ -213,7 +213,7 @@ export function createMock() {
     rpc: async (fn, args) => ({ data: RPC[fn] ? RPC[fn](args || {}) : null, error: null }),
     auth: {
       getSession: async () => ({ data: { session } }),
-      getUserIdentities: async () => ({ data: { identities: [{ provider: 'email' }] } }),
+      getUserIdentities: async () => ({ data: { identities: [{ provider: 'email' }, { provider: 'discord', identity_data: { avatar_url: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Crect width=%2240%22 height=%2240%22 fill=%22%235865f2%22/%3E%3C/svg%3E' } }] } }),
       linkIdentity: async () => ({ error: { message: '示範模式不能連結帳號' } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       signOut: async () => { location.search = ''; },
