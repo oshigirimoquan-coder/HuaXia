@@ -201,6 +201,8 @@ export function createMock() {
     rpc: async (fn, args) => ({ data: RPC[fn] ? RPC[fn](args || {}) : null, error: null }),
     auth: {
       getSession: async () => ({ data: { session } }),
+      getUserIdentities: async () => ({ data: { identities: [{ provider: 'email' }] } }),
+      linkIdentity: async () => ({ error: { message: '示範模式不能連結帳號' } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       signOut: async () => { location.search = ''; },
       signInWithOAuth: async () => ({ error: null }), signInWithPassword: async () => ({ error: null }), signUp: async () => ({ error: null }),

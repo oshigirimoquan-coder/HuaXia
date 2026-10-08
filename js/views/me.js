@@ -5,7 +5,14 @@ route('/me', async () => {
   const u = state.profile;
   const { data: priv } = await sb.from('profile_private').select('*').eq('user_id', me()).maybeSingle();
   const cals = calendarsFor(state.calendars, state.p, u?.section);
+  const ids = (await sb.auth.getUserIdentities().catch(() => null))?.data?.identities || [];
+  const hasDiscord = ids.some((i) => i.provider === 'discord');
+  const hasEmail = ids.some((i) => i.provider === 'email');
   setTimeout(() => {
+    $('#link-discord')?.addEventListener('click', async () => {
+      const r = await sb.auth.linkIdentity({ provider: 'discord', options: { redirectTo: location.origin + location.pathname + '#/me' } });
+      if (r?.error) toast(/manual linking/i.test(r.error.message) ? '管理員還沒開啟「帳號連結」功能（Supabase 的 Allow manual linking）。' : /already/i.test(r.error.message) ? '這個 Discord 已經綁在另一個帳號上，請管理員先刪掉那個帳號。' : '連結失敗：' + r.error.message, 'bad');
+    });
     $('#me-form')?.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
       const a = await run(() => sb.from('profiles').update({ display_name: f.get('display_name').trim(), real_name: f.get('real_name').trim(), instruments: f.get('instruments').trim(), grade: f.get('grade').trim(), school: f.get('school').trim(), bio: f.get('bio').trim() }).eq('id', me()));
@@ -17,6 +24,13 @@ route('/me', async () => {
   return pageHead('我的設定') +
     `<section class="card me-head">${avatar(me(), 56)}<div><h2>${esc(nameOf(me()))}</h2><div class="chips">${sectionChip(u?.section)}${roleChips(state.roles)}${u?.officer_title ? `<span class="chip gold">${esc(u.officer_title)}</span>` : ''}</div></div>
       <button class="btn ghost" id="logout">登出</button></section>
+
+    <section class="card"><h2>登入方式</h2>
+      <p class="small">目前可用：${[hasDiscord && 'Discord', hasEmail && 'Email ＋ 密碼'].filter(Boolean).join('、') || '—'}</p>
+      ${hasDiscord ? '<p class="small muted">已綁定 Discord，用 Discord 或 Email 登入都是同一個帳號。</p>'
+        : `<p class="small muted">把 Discord 綁到這個帳號，之後按「用 Discord 登入」就會進到同一個帳號，出席與編制紀錄不會分開。</p>
+           <button class="btn" id="link-discord">連結 Discord</button>`}
+    </section>
 
     <section class="card"><h2>加到我的 Google 行事曆</h2>
       ${cals.length ? `<p class="small muted">按一下加入，之後幹部新增或修改行程都會自動出現在你的行事曆，練習前一天和前一小時會提醒。只需要加一次。</p>
