@@ -446,3 +446,17 @@ input.pick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); 
 @media (max-width: 860px) { .demo-flag { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .mark.writing .hx-pen { stroke-dashoffset: 0; } .seal.stamp-in { opacity: .95; } }
+
+/* 分組樂譜 */
+.sec-scores { display: grid; }
+.sec-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sec-row:last-child { border: 0; }
+.sec-row .sec-name { width: 56px; flex: none; }
+.sec-row .scores { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+/* 工具 */
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.tool { display: grid; gap: 6px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); color: inherit; text-decoration: none; transition: border-color .15s; }
+.tool:hover { border-color: var(--accent); }
+.tool h3 { margin: 0; font-size: 17px; } .tool .go { color: var(--accent); font-size: 13px; }
+.tool p { margin: 0; overflow-wrap: anywhere; }
+.tool .btn { justify-self: start; }

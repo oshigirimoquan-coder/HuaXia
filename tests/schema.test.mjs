@@ -247,3 +247,18 @@ test('校友：看得到社內行程；只有排進當天編制才算應出席',
   await as(A, `insert into part_assignments (part_id,user_id) values ('${PT1}','${AL}')`);
   assert.equal(await exp(9), true);   // 排進編制就算
 });
+
+test('分組樂譜：社員看自己那組；槍手看排到的曲子裡同組的譜', async () => {
+  assert.equal((await as(A, `select section from piece_parts where id='${PT2}'`)).rows[0].section, '拉弦'); // 高胡 → 自動判斷
+  await as(A, `insert into scores (piece_id,section,title) values ('${P1}','拉弦','P1拉弦'),('${P1}','吹管','P1吹管'),('${P2}','拉弦','P2拉弦')`);
+  const t = async (u) => (await as(u, `select title from scores where section is not null order by title`)).rows.map((r) => r.title);
+  assert.deepEqual(await t(B), ['P1拉弦', 'P2拉弦']);
+  assert.deepEqual(await t(R), ['P2拉弦']);
+  assert.equal((await t(A)).length, 3);
+});
+
+test('工具連結：已預設一筆，社員看得到但不能改', async () => {
+  assert.equal((await as(B, `select value from settings where key='tools'`)).rows[0].value[0].url.includes('netlify'), true);
+  await as(B, `update settings set value='[]' where key='tools'`);
+  assert.equal((await as(A, `select jsonb_array_length(value) n from settings where key='tools'`)).rows[0].n, 1);
+});

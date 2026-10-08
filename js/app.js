@@ -11,6 +11,7 @@ import './views/ringers.js';
 import './views/members.js';
 import './views/settings.js';
 import './views/me.js';
+import './views/tools.js';
 import { joinScreen } from './views/recruit.js';
 import { SHARE_CATS } from './views/announcements.js';
 
@@ -20,6 +21,7 @@ const NAV = [
   { path: '/events', label: '行程', main: true, group: '練習' },
   { path: '/pieces', label: '曲目', main: true, group: '練習' },
   { path: '/attendance', label: '出席', group: '練習', show: (p) => !p.ringerOnly },
+  { path: '/tools', label: '工具', group: '練習' },
   { path: '/announcements', label: '公告', main: true, badge: 'main', group: '社團' },
   { path: '/members', label: '成員', group: '社團', show: (p) => p.insider },
   { path: '/teaching', label: '教學班', group: '幹部', mgr: true, show: (p) => p.canTeach },

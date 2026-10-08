@@ -107,3 +107,21 @@ test('複選類型的預設：只有幹部會議才限幹部看；含總彩或�
   assert.deepEqual(kindsDefaults(['sectional', 'officer'], '拉弦'), { kind: 'sectional', calendar_key: 'sec-bow', audience: 'insiders', counts: true });
   assert.deepEqual(kindsDefaults(['tutti', 'concert']), { kind: 'tutti', calendar_key: 'tutti', audience: 'all', counts: true });
 });
+
+test('批次上傳：依檔名猜組別', async () => {
+  const { guessSection } = await import('../js/logic.js');
+  assert.equal(guessSection('春天組曲_梆笛.pdf', '春天組曲'), '吹管');
+  assert.equal(guessSection('春天組曲_笛一.pdf'), '吹管');
+  assert.equal(guessSection('低音笙.pdf'), '吹管');
+  assert.equal(guessSection('泰芙努特_二胡I.pdf', '泰芙努特'), '拉弦');
+  assert.equal(guessSection('高胡.pdf'), '拉弦');
+  assert.equal(guessSection('大提琴.pdf'), '低音');
+  assert.equal(guessSection('低音提琴.pdf'), '低音');
+  assert.equal(guessSection('中阮.pdf'), '彈撥');
+  assert.equal(guessSection('揚琴.pdf'), '彈撥');
+  assert.equal(guessSection('定音鼓.pdf'), '打擊');
+  assert.equal(guessSection('Erhu 1.pdf'), '拉弦');
+  assert.equal(guessSection('鼓聲_總譜.pdf', '鼓聲'), '總譜');
+  assert.equal(guessSection('鼓聲_琵琶.pdf', '鼓聲'), '彈撥');   // 曲名裡的字不算
+  assert.equal(guessSection('鍵盤.pdf'), null);
+});

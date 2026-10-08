@@ -140,3 +140,22 @@ export function kindsDefaults(kinds, section) {
     counts: !onlyOfficer,
   };
 }
+
+// 依檔名／聲部名稱猜組別（批次上傳樂譜用）；回傳 '總譜'、組別名稱或 null（猜不到）
+const SECTION_KEYS = [
+  ['吹管', ['笛', '笙', '嗩吶', '唢呐', '管子', '簫', '箫', '巴烏', '葫蘆絲', 'dizi', 'sheng', 'suona', 'flute']],
+  ['低音', ['大提', '低音提', '倍大提', '低音大提', '革胡', '貝斯', 'cello', 'bass']],
+  ['拉弦', ['胡', 'huqin', 'erhu', 'gaohu', 'zhonghu']],
+  ['彈撥', ['琵琶', '阮', '柳琴', '揚琴', '扬琴', '箏', '筝', '三弦', '箜篌', 'pipa', 'ruan', 'liuqin', 'yangqin', 'guzheng']],
+  ['打擊', ['打擊', '打击', '鼓', '鑼', '锣', '鈸', '钹', '木魚', '定音', '鐘琴', '鐵琴', '木琴', '鈴', '梆子', '板', 'perc', 'timp', 'drum']],
+];
+export function guessSection(name, pieceTitle = '') {
+  let s = String(name || '').replace(/\.[^.]+$/, '');
+  if (pieceTitle) s = s.split(pieceTitle).join(' ');
+  const low = s.toLowerCase();
+  if (/總譜|总谱|full\s*score|\bscore\b|\bfull\b/.test(low)) return '總譜';
+  for (const [sec, keys] of SECTION_KEYS) {
+    if (keys.some((k) => (/^[a-z]+$/.test(k) ? new RegExp(`(^|[^a-z])${k}`).test(low) : low.includes(k)))) return sec;
+  }
+  return null;
+}

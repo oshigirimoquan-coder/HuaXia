@@ -46,7 +46,7 @@ function fixtures() {
     profiles, user_roles,
     profile_private: profiles.map((p, i) => ({ user_id: p.id, email: `member${i + 1}@example.com`, google_email: null, phone: '' })),
     semesters: [{ id: 's1', name: '114-1', starts_on: '2026-09-01', ends_on: '2027-01-31', is_current: true }],
-    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'last_backup_at', value: '2026-07-20T10:00:00Z' }, { key: 'notify', value: { channel: 'discord' } }],
+    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'last_backup_at', value: '2026-07-20T10:00:00Z' }, { key: 'notify', value: { channel: 'discord' } }, { key: 'tools', value: [{ name: '輔助工具', url: 'https://splendorous-piroshki-574d88.netlify.app/', desc: '' }] }],
     private_settings: [],
     calendars: [['tutti', '華夏｜全團練習與演出', 'insiders', null], ['sec-bow', '華夏｜拉弦分部課', 'section', '拉弦'], ['sec-wind', '華夏｜吹管分部課', 'section', '吹管'], ['class', '華夏｜教學班', 'class', null], ['ringers', '華夏｜槍手行程', 'ringers', null], ['officers', '華夏｜幹部', 'officers', null]]
       .map(([key, name, audience, section], i) => ({ key, name, audience, section, gcal_id: `demo-${key}@group.calendar.google.com`, sort: i })),
@@ -91,7 +91,8 @@ function fixtures() {
       { id: 'ap1', name: '吳小芸', grade: '資管一', contact: 'IG：@xiaoyun', experience: 'none', instruments_played: '', interests: ['拉弦'], want_class: true, message: '想學二胡！', status: 'new', officer_note: '', created_at: at(-1, '21:30') },
       { id: 'ap2', name: '林子豪', grade: '經濟二', contact: 'LINE：tzuhao', experience: 'basic', instruments_played: '國中學過笛子', interests: ['吹管'], want_class: false, message: '', status: 'contacted', officer_note: '10/7 已傳 LINE', created_at: at(-3, '12:10') },
     ],
-    scores: [{ id: 'sc1', piece_id: 'p1', part_id: 'pp1', title: '二胡I 分譜', file_path: 'demo.pdf', audio_url: 'https://example.com' }],
+    scores: [{ id: 'sc1', piece_id: 'p1', part_id: 'pp1', title: '二胡I 分譜', file_path: 'demo.pdf', audio_url: 'https://example.com' },
+      { id: 'sc2', piece_id: 'p1', section: '拉弦', title: '泰芙努特_二胡I', file_path: 'demo.pdf', audio_url: '' }, { id: 'sc3', piece_id: 'p1', section: '吹管', title: '泰芙努特_梆笛', file_path: 'demo.pdf', audio_url: '' }],
   };
 }
 
@@ -219,7 +220,7 @@ export function createMock() {
       signOut: async () => { location.search = ''; },
       signInWithOAuth: async () => ({ error: null }), signInWithPassword: async () => ({ error: null }), signUp: async () => ({ error: null }),
     },
-    storage: { from: () => ({ createSignedUrl: async () => ({ error: { message: 'demo' } }), upload: async () => ({ error: { message: '示範模式不能上傳' } }), remove: async () => ({}) }) },
+    storage: { from: () => ({ createSignedUrl: async () => ({ error: { message: 'demo' } }), upload: async () => ({ data: {}, error: null }), remove: async () => ({}) }) },
     functions: { invoke: async () => ({ data: { ok: true }, error: null }) },
   };
 }

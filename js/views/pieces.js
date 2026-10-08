@@ -1,5 +1,5 @@
-import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO } from '../core.js';
-import { partShortage } from '../logic.js';
+import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
+import { partShortage, SECTIONS, guessSection } from '../logic.js';
 
 async function loadAll(pieceId = null) {
   let pq = sb.from('pieces').select('*').order('title');
@@ -38,6 +38,7 @@ async function editPart(pieceId, part = null) {
       { name: 'name', label: '聲部', required: true, value: part?.name, placeholder: '例：二胡I、打擊1、高笙' },
       { name: 'needed', label: '需要人數（顯示用）', value: part?.needed ?? '1', placeholder: '例：2、2-3、1↑' },
       { name: 'needed_min', label: '至少幾人（判斷缺人）', type: 'number', min: 0, value: part?.needed_min ?? 1 },
+      { name: 'section', label: '組別', type: 'select', value: part?.section || '', options: [['', '（依名稱自動判斷）'], ...SECTIONS.map((x) => [x, x])], hint: '槍手會看到這首曲子裡同組的分組樂譜' },
       { name: 'sort', label: '排序', type: 'number', value: part?.sort ?? 0, hint: '數字小的排前面' },
       { name: 'tutor_id', label: '小老師', type: 'select', value: part?.tutor_id || '', options: [['', '（無）'], ...people] },
       { name: 'note', label: '備註', value: part?.note, full: true, placeholder: '例：前面有 solo、需要八度達人' },
@@ -45,7 +46,7 @@ async function editPart(pieceId, part = null) {
   });
   if (!v) return;
   if (v.__danger) { await run(() => sb.from('piece_parts').delete().eq('id', part.id), '已刪除聲部'); return render(); }
-  const row = { ...v, tutor_id: v.tutor_id || null, needed_min: v.needed_min ?? 0, sort: v.sort ?? 0 };
+  const row = { ...v, section: v.section || null, tutor_id: v.tutor_id || null, needed_min: v.needed_min ?? 0, sort: v.sort ?? 0 };
   await run(() => part ? sb.from('piece_parts').update(row).eq('id', part.id) : sb.from('piece_parts').insert({ ...row, piece_id: pieceId }), '已儲存');
   render();
 }
@@ -77,20 +78,47 @@ async function openScore(s) {
   window.open(data.signedUrl, '_blank', 'noopener');
 }
 
-function uploadScore(piece, partId) {
-  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf,image/*';
-  inp.onchange = async () => {
-    const f = inp.files[0]; if (!f) return;
-    if (f.size > 20 * 1024 * 1024) return toast('檔案超過 20MB，請先壓縮', 'bad');
-    const safe = f.name.replace(/[^\w.\-]+/g, '_');
-    const path = `${piece.id}/${partId || 'full'}/${Date.now()}_${safe}`;
-    toast('上傳中…');
-    const up = await run(() => sb.storage.from('scores').upload(path, f, { contentType: f.type }));
-    if (!up) return;
-    await run(() => sb.from('scores').insert({ piece_id: piece.id, part_id: partId, title: f.name.replace(/\.[^.]+$/, ''), file_path: path }), '已上傳');
-    render();
-  };
-  inp.click();
+const MAX = 20 * 1024 * 1024;
+// items: [{ file, part_id?, section? }]；part_id 與 section 都沒有 = 總譜
+async function uploadFiles(piece, items) {
+  const big = items.filter((x) => x.file.size > MAX);
+  if (big.length) toast(`${big.map((x) => x.file.name).join('、')} 超過 20MB，已略過`, 'bad');
+  const list = items.filter((x) => x.file.size <= MAX);
+  let ok = 0;
+  for (const [i, it] of list.entries()) {
+    if (list.length > 1) toast(`上傳中 ${i + 1}／${list.length}…`);
+    const safe = it.file.name.replace(/[^\w.\-]+/g, '_');
+    const path = `${piece.id}/${it.part_id || it.section || 'full'}/${Date.now()}_${safe}`.replace(/[^\w./\-]/g, (c) => encodeURIComponent(c).replace(/%/g, ''));
+    const up = await run(() => sb.storage.from('scores').upload(path, it.file, { contentType: it.file.type || 'application/pdf' }));
+    if (!up) continue;
+    if (await run(() => sb.from('scores').insert({ piece_id: piece.id, part_id: it.part_id || null, section: it.section || null, title: it.file.name.replace(/\.[^.]+$/, ''), file_path: path }))) ok++;
+  }
+  if (ok) toast(`已上傳 ${ok} 個檔案`, 'ok');
+  render();
+}
+function pickFiles(multiple, cb) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf,image/*'; inp.multiple = multiple; inp.hidden = true;
+  inp.addEventListener('change', () => { const fs = [...inp.files]; inp.remove(); if (fs.length) cb(fs); });
+  document.body.append(inp); inp.click();
+}
+const uploadScore = (piece, partId, section = null) => pickFiles(false, ([file]) => uploadFiles(piece, [{ file, part_id: partId, section }]));
+
+// 批次上傳：依檔名自動分到五個組（Ling Ling Suite 拆好的分譜直接整包丟進來）
+function batchUpload(piece) {
+  pickFiles(true, async (files) => {
+    files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    const opts = [['總譜', '總譜'], ...SECTIONS.map((x) => [x, x + '組']), ['', '（不上傳）']];
+    const v = await formDialog({
+      title: `批次上傳 ${files.length} 個檔案`, submit: '上傳',
+      fields: [{ type: 'note', name: '_n', text: '已依檔名自動分組，請確認一下，分錯或標「猜不到」的手動改。各組成員只看得到自己那組的譜。' },
+        ...files.map((f, i) => { const g = guessSection(f.name, piece.title); return { name: 'f' + i, label: f.name, type: 'select', value: g || '', options: opts, hint: g ? '' : '猜不到，請選擇' }; })],
+    });
+    if (!v) return;
+    const items = files.map((file, i) => ({ file, g: v['f' + i] })).filter((x) => x.g)
+      .map(({ file, g }) => ({ file, section: g === '總譜' ? null : g }));
+    if (!items.length) return toast('沒有要上傳的檔案');
+    uploadFiles(piece, items);
+  });
 }
 
 async function editScore(s) {
@@ -144,19 +172,26 @@ route('/pieces/:id', async ({ id }) => {
     $('#edit-piece')?.addEventListener('click', () => editPiece(pc));
     $('#add-part')?.addEventListener('click', () => editPart(id));
     $('#up-full')?.addEventListener('click', () => uploadScore(pc, null));
+    $('#batch-up')?.addEventListener('click', () => batchUpload(pc));
+    $$('[data-up-sec]').forEach((b) => (b.onclick = () => uploadScore(pc, null, b.dataset.upSec)));
     $$('[data-part-edit]').forEach((b) => (b.onclick = () => editPart(id, pts.find((x) => x.id === b.dataset.partEdit))));
     $$('[data-assign]').forEach((b) => (b.onclick = () => assign(pts.find((x) => x.id === b.dataset.assign), asg, ringers)));
     $$('[data-up]').forEach((b) => (b.onclick = () => uploadScore(pc, b.dataset.up)));
     $$('[data-score]').forEach((b) => (b.onclick = () => openScore((scores || []).find((s) => s.id === b.dataset.score))));
     $$('[data-score-edit]').forEach((b) => (b.onclick = () => editScore((scores || []).find((s) => s.id === b.dataset.scoreEdit))));
   });
-  const scoreLinks = (partId) => (scores || []).filter((s) => s.part_id === partId).map((s) =>
+  const scoreLinks = (partId, sec = null) => (scores || []).filter((s) => (s.part_id || null) === partId && (s.section || null) === sec).map((s) =>
     `<span class="score"><button class="link" data-score="${s.id}">📄 ${esc(s.title || '樂譜')}</button>${s.audio_url ? `<a class="link" href="${esc(s.audio_url)}" target="_blank" rel="noopener">▶ 示範</a>` : ''}${p.officer ? `<button class="icon-btn" data-score-edit="${s.id}" aria-label="編輯樂譜">⋯</button>` : ''}</span>`).join('');
-  const full = (scores || []).filter((s) => !s.part_id);
+  const full = (scores || []).filter((s) => !s.part_id && !s.section);
+  const secs = SECTIONS.filter((x) => p.officer || (scores || []).some((s) => s.section === x));
   return `<a class="back" href="#/pieces">← 曲目</a>` +
     pageHead(pc.title, `${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min} 分鐘</span>` : ''}`, p.officer ? '<button class="btn" id="edit-piece">編輯曲目</button>' : '') +
     (pc.notes ? `<p class="note">${esc(pc.notes)}</p>` : '') +
     ((p.staff || full.length) ? `<section class="card"><div class="card-head"><h2>總譜</h2>${p.officer ? '<button class="btn sm" id="up-full">上傳總譜</button>' : ''}</div>${full.length ? `<div class="scores">${scoreLinks(null)}</div>` : '<p class="muted small">尚未上傳</p>'}</section>` : '') +
+    ((p.officer || secs.length) ? `<section class="card"><div class="card-head"><h2>分組樂譜</h2>${p.officer ? '<button class="btn sm pri" id="batch-up">批次上傳</button>' : ''}</div>
+      ${p.officer ? '<p class="small muted">用 Ling Ling Suite 拆好的分譜可以整包丟進「批次上傳」，網站會依檔名分到各組。各組成員只看得到自己那組。</p>' : ''}
+      ${secs.length ? `<div class="sec-scores">${secs.map((x) => `<div class="sec-row"><div class="sec-name">${sectionChip(x)}</div><div class="scores">${scoreLinks(null, x) || '<span class="muted small">尚未上傳</span>'}</div>${p.officer ? `<button class="btn sm ghost" data-up-sec="${x}">上傳</button>` : ''}</div>`).join('')}</div>` : ''}
+    </section>` : '') +
     `<section class="card"><div class="card-head"><h2>編制</h2>${p.officer ? '<button class="btn sm pri" id="add-part">＋ 聲部</button>' : ''}</div>
      ${pts.length ? `<div class="parts">${pts.map((pt) => {
       const a = asg.filter((x) => x.part_id === pt.id); const short = partShortage(pt, a.length);
@@ -167,5 +202,5 @@ route('/pieces/:id', async ({ id }) => {
         <div class="part-scores">${scoreLinks(pt.id)}</div>
         ${p.officer ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button><button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button><button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button></div>` : ''}
       </div>`; }).join('')}</div>` : '<p class="muted">還沒有設定聲部。</p>'}
-     ${!p.staff ? '<p class="small muted">樂譜只顯示你負責的聲部。</p>' : ''}</section>`;
+     ${!p.staff ? '<p class="small muted">分譜只顯示你負責的聲部。</p>' : ''}</section>`;
 });

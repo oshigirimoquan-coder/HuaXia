@@ -56,3 +56,8 @@
 - 槍手帳號可以讀到所有啟用中成員的名字與組別（不含聯絡方式）。
 - `is_expected` 可被任何登入者呼叫，能推得某人是否被排到某場次；風險低。
 - Supabase 免費專案 7 天沒人用會暫停。
+
+## 2026-10-08 分組樂譜、工具頁
+- 樂譜可依「組別」發（scores.section）：批次上傳依檔名猜組（js/logic.js `guessSection`，DB 端 `guess_section` 規則一致），組員看自己那組；槍手看排到的曲子裡同組的譜（piece_parts.section 依名稱自動填）。
+- 讀譜權限統一在 `can_read_score()`，表格與 Storage 共用。
+- 「工具」頁（#/tools）：settings.tools 清單，外部連結開新分頁，管理員可編輯。

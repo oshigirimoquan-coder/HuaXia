@@ -65,7 +65,9 @@ insert into public.settings (key, value) values
   ('attendance_rules', '{"late_weight":1,"early_weight":1,"unexcused_weight":0.5,"excused_mode":"absent","count_ringers":false}'),
   ('recruit_open', 'false'),
   -- 公告通知管道（待社長決定 discord / email / both）
-  ('notify', '{"channel":"discord"}')
+  ('notify', '{"channel":"discord"}'),
+  -- 「工具」頁的外部連結（管理員可在工具頁修改）
+  ('tools', '[{"name":"輔助工具","url":"https://splendorous-piroshki-574d88.netlify.app/","desc":""}]')
 on conflict (key) do nothing;
 -- 舊資料補上「未預告晚到早退」的權重（重複執行不會覆蓋已調整的值）
 update public.settings set value = '{"unexcused_weight":0.5}'::jsonb || value
@@ -157,6 +159,32 @@ create table if not exists public.scores (
   created_by uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- 分組樂譜：section 有值 = 給整組看（批次上傳時依檔名自動分組）
+alter table public.scores add column if not exists section text;
+alter table public.scores drop constraint if exists scores_section_check;
+alter table public.scores add constraint scores_section_check check (section is null or section in ('吹管','拉弦','彈撥','打擊','低音'));
+alter table public.piece_parts add column if not exists section text;
+alter table public.piece_parts drop constraint if exists piece_parts_section_check;
+alter table public.piece_parts add constraint piece_parts_section_check check (section is null or section in ('吹管','拉弦','彈撥','打擊','低音'));
+-- 聲部沒填組別時，依名稱自動判斷（與 js/logic.js 的 guessSection 一致）
+create or replace function public.guess_section(n text) returns text language sql immutable as $$
+  select case
+    when n ~* '笛|笙|嗩吶|唢呐|管子|簫|箫|巴烏|葫蘆絲|dizi|sheng|suona|flute' then '吹管'
+    when n ~* '大提|低音提|倍大提|革胡|貝斯|cello|bass' then '低音'
+    when n ~* '胡|erhu|gaohu|zhonghu' then '拉弦'
+    when n ~* '琵琶|阮|柳琴|揚琴|扬琴|箏|筝|三弦|箜篌|pipa|ruan|liuqin|yangqin|guzheng' then '彈撥'
+    when n ~* '打擊|打击|鼓|鑼|锣|鈸|钹|木魚|定音|鐘琴|鐵琴|木琴|鈴|梆子|板|perc|timp|drum' then '打擊'
+  end
+$$;
+create or replace function public.piece_parts_section() returns trigger language plpgsql as $$
+begin
+  if new.section is null or new.section = '' then new.section := public.guess_section(new.name); end if;
+  return new;
+end $$;
+drop trigger if exists piece_parts_section on public.piece_parts;
+create trigger piece_parts_section before insert or update on public.piece_parts
+  for each row execute function public.piece_parts_section();
+update public.piece_parts set section = public.guess_section(name) where section is null;
 
 -- ---------------------------------------------------------------------
 -- 5. 教學班
@@ -702,9 +730,17 @@ create policy assign_write on public.part_assignments for all using (public.is_o
 create policy ringer_officer on public.ringers for all using (public.is_officer()) with check (public.is_officer());
 create policy ringer_self on public.ringers for select using (user_id = auth.uid());
 
--- 樂譜：幹部與指導老師看全部；其他人只看自己聲部
-create policy score_read on public.scores for select using (
-  public.is_staff() or (part_id is not null and public.in_part(part_id)));
+create or replace function public.can_read_score(s public.scores) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_staff()
+    or (s.part_id is not null and public.in_part(s.part_id))
+    or (s.part_id is null and s.section is not null and (
+      (public.is_insider() and s.section = public.my_section())
+      or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.section = s.section and public.in_part(pp.id))))
+$$;
+-- 樂譜：幹部與指導老師看全部；分譜看自己聲部；分組樂譜看自己那一組
+-- （槍手沒有組別：排進這首曲子、且聲部屬於該組時也看得到）
+create policy score_read on public.scores for select using (public.can_read_score(scores));
 create policy score_write on public.scores for all using (public.is_officer()) with check (public.is_officer());
 
 -- 教學班
@@ -800,7 +836,6 @@ drop policy if exists scores_write on storage.objects;
 drop policy if exists scores_delete on storage.objects;
 create policy scores_read on storage.objects for select using (
   bucket_id = 'scores' and (public.is_staff() or exists (
-    select 1 from public.scores s where s.file_path = storage.objects.name
-      and s.part_id is not null and public.in_part(s.part_id))));
+    select 1 from public.scores s where s.file_path = storage.objects.name and public.can_read_score(s))));
 create policy scores_write on storage.objects for insert with check (bucket_id = 'scores' and public.is_officer());
 create policy scores_delete on storage.objects for delete using (bucket_id = 'scores' and public.is_officer());

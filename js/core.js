@@ -110,6 +110,7 @@ export function formDialog({ title, fields, submit = '儲存', danger = null, sw
     const d = document.createElement('dialog');
     d.className = 'dlg';
     const field = (f) => {
+      if (f.type === 'note') return `<p class="field full small muted">${esc(f.text)}</p>`;
       const id = `f-${f.name}`; const v = f.value ?? '';
       const req = f.required ? 'required' : '';
       let ctl;
@@ -138,6 +139,7 @@ export function formDialog({ title, fields, submit = '儲存', danger = null, sw
       e.preventDefault();
       const out = {};
       for (const f of fields) {
+        if (f.type === 'note') continue;
         if (f.type === 'checks') out[f.name] = [...d.querySelectorAll(`input[name="${f.name}"]:checked`)].map((x) => x.value);
         else if (f.type === 'toggle') out[f.name] = d.querySelector(`[name="${f.name}"]`).checked;
         else { const val = d.querySelector(`[name="${f.name}"]`).value.trim(); out[f.name] = f.type === 'number' ? (val === '' ? null : Number(val)) : val; }
