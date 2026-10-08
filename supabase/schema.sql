@@ -247,6 +247,13 @@ create table if not exists public.announcements (
   author uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- 頻道：main 公告、sizhu 絲竹、concerts 音樂會分享、alumni 校友團
+alter table public.announcements add column if not exists channel text not null default 'main'
+  check (channel in ('main','sizhu','concerts','alumni'));
+alter table public.announcements add column if not exists event_at timestamptz;   -- 音樂會日期
+alter table public.announcements add column if not exists venue text not null default '';
+alter table public.announcements add column if not exists link text not null default '';
+
 create table if not exists public.announcement_reads (
   ann_id uuid references public.announcements(id) on delete cascade,
   user_id uuid default auth.uid() references public.profiles(id) on delete cascade,
@@ -663,6 +670,12 @@ create policy ann_read on public.announcements for select using (
     when 'ringers' then public.has_role('ringer')
     else false end);
 create policy ann_write on public.announcements for all using (public.is_officer()) with check (public.is_officer());
+-- 音樂會分享：社內成員都能發，只能改或刪自己的
+create policy ann_share_insert on public.announcements for insert with check (
+  channel = 'concerts' and public.is_insider() and author = auth.uid() and audience = 'insiders' and not pinned);
+create policy ann_share_own on public.announcements for update using (channel = 'concerts' and author = auth.uid())
+  with check (channel = 'concerts' and author = auth.uid() and audience = 'insiders' and not pinned);
+create policy ann_share_del on public.announcements for delete using (channel = 'concerts' and author = auth.uid());
 create policy annr_own on public.announcement_reads for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- 任務：幹部事項社員看不到

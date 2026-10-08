@@ -61,27 +61,28 @@ code { font-family: var(--f-mono); font-size: 13px; background: var(--sunk); pad
 /* ---------- 外框：上方導覽列 ---------- */
 #app { min-height: 100vh; }
 .top { position: sticky; top: 0; z-index: 6; background: var(--surface); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0px); }
-.top-in { max-width: var(--w); margin: 0 auto; padding: 0 16px; height: 60px; display: flex; align-items: center; gap: 28px; }
+.top-in { max-width: var(--w); margin: 0 auto; padding: 0 16px; height: 60px; display: flex; align-items: center; gap: 20px; }
 .brand { display: flex; align-items: center; gap: 8px; height: 30px; flex: none; color: var(--ink); }
 .brand:hover { text-decoration: none; }
-.tabs { display: flex; gap: 2px; height: 100%; min-width: 0; }
-.tabs::-webkit-scrollbar { display: none; }
+.tabs { display: flex; align-items: stretch; gap: 2px; height: 100%; min-width: 0; flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.tabs::-webkit-scrollbar { height: 4px; } .tabs::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+.tab-sep { flex: none; width: 1px; margin: 18px 6px; background: var(--line); }
 .tabs a { display: flex; align-items: center; padding: 0 11px; color: var(--muted); font: 400 16px var(--f-kai); letter-spacing: .1em; border-bottom: 2px solid transparent; white-space: nowrap; transition: color .15s, border-color .15s; }
 .tabs a:hover { color: var(--ink); text-decoration: none; }
 .tabs a[aria-current] { color: var(--ink); border-color: var(--accent); font-weight: 700; }
-.mgr { position: relative; display: flex; }
+.mgr { position: relative; display: flex; height: 100%; flex: none; }
 .mgr summary { display: flex; align-items: center; gap: 6px; padding: 0 11px; height: 100%; cursor: pointer; list-style: none; color: var(--muted); font: 400 16px var(--f-kai); letter-spacing: .1em; border-bottom: 2px solid transparent; white-space: nowrap; }
 .mgr summary::-webkit-details-marker { display: none; }
 .mgr summary::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg) translateY(-2px); transition: transform .15s; }
 .mgr[open] summary::after { transform: rotate(-135deg) translateY(-1px); }
 .mgr summary:hover, .mgr[open] summary { color: var(--ink); }
 .mgr.on summary { color: var(--ink); border-color: var(--accent); font-weight: 700; }
-.mgr-menu { position: absolute; top: calc(100% + 1px); left: 0; min-width: 140px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 10px 28px rgba(0,0,0,.12); padding: 6px; display: grid; z-index: 8; }
+.mgr-menu { position: absolute; top: calc(100% + 1px); right: 0; min-width: 140px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 10px 28px rgba(0,0,0,.12); padding: 6px; display: grid; z-index: 8; }
 .mgr-menu a { padding: 8px 12px; border-radius: 4px; color: var(--ink); font: 400 15px var(--f-kai); letter-spacing: .1em; }
 .mgr-menu a:hover, .mgr-menu a[aria-current] { background: var(--soft); text-decoration: none; }
 .mgr-menu a[aria-current] { color: var(--accent); font-weight: 700; }
 .badge { background: var(--bad); color: #fff; font: 500 11px/16px var(--f-mono); font-style: normal; border-radius: 8px; padding: 0 5px; margin-left: 5px; min-width: 16px; text-align: center; }
-.me-link { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; flex: none; }
+.me-link { margin-left: 4px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; flex: none; }
 .me-link:hover { text-decoration: none; color: var(--ink); }
 #main { max-width: var(--w); margin: 0 auto; padding: 28px 16px 64px; outline: none; }
 #main[aria-busy] { opacity: .55; transition: opacity .2s .15s; }
@@ -91,7 +92,8 @@ code { font-family: var(--f-mono); font-size: 13px; background: var(--sunk); pad
 @keyframes breathe { 50% { transform: scale(.92) rotate(-3deg); opacity: .7; } }
 
 @media (max-width: 860px) {
-  .tabs { display: none; }
+  .tabs, .mgr { display: none; }
+  .me-link { margin-left: auto; }
   .me-link > span:first-child { display: none; }
   .top-in { height: 54px; }
   #main { padding: 18px 16px calc(92px + env(safe-area-inset-bottom, 0px)); }
@@ -105,7 +107,9 @@ code { font-family: var(--f-mono); font-size: 13px; background: var(--sunk); pad
   .more { display: block; position: fixed; inset: 0; z-index: 7; background: rgba(8, 16, 18, .35); }
   .more[hidden] { display: none !important; }
   .more-sheet { position: absolute; inset: auto 0 0 0; background: var(--surface); border-radius: 12px 12px 0 0; padding: 14px 12px calc(84px + env(safe-area-inset-bottom, 0px));
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; animation: up .22s cubic-bezier(.2,.8,.2,1); }
+    display: grid; gap: 10px; animation: up .22s cubic-bezier(.2,.8,.2,1); max-height: 80vh; overflow-y: auto; }
+  .more-g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+  .more-g > span { grid-column: 1 / -1; font: 700 13px var(--f-kai); letter-spacing: .15em; color: var(--muted); padding: 2px 12px; }
   .more-sheet a { padding: 12px; text-align: center; border-radius: var(--r); color: var(--ink); font: 400 16px var(--f-kai); letter-spacing: .1em; }
   .more-sheet a:hover, .more-sheet a[aria-current] { background: var(--soft); text-decoration: none; }
   @keyframes up { from { transform: translateY(24px); opacity: 0; } }
@@ -317,6 +321,14 @@ tr.inactive { opacity: .5; }
 .ann-mini li:last-child { border: 0; }
 .ann-mini li a { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-mini li.unread a { font-weight: 700; }
+
+/* 音樂會分享 */
+.ann.concert { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 16px; }
+.ann.concert .ev-date { padding-top: 4px; }
+.ann.concert .ann-head { position: absolute; right: 18px; top: 14px; }
+.ann.concert .ann-head:empty { display: none; }
+.ann.concert h3 { margin-top: 0; padding-right: 56px; }
+.meta-line { font-size: 14px; color: var(--muted); }
 
 /* ---------- 任務 ---------- */
 .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }

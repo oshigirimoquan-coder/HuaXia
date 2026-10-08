@@ -2,6 +2,7 @@ import { sb, state, route, esc, run, toast, formDialog, pageHead, empty, render,
 import { SECTIONS } from '../logic.js';
 import { invokeFn } from './events.js';
 
+const CH_LABEL = { sizhu: '絲竹', concerts: '音樂會', alumni: '校友團' };
 const setVal = (key, value) => run(() => sb.from('settings').upsert({ key, value }));
 
 route('/settings', async () => {
@@ -39,8 +40,9 @@ route('/settings', async () => {
     });
     $('#notify')?.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
-      const value = { announce: f.get('announce').trim(), officers: f.get('officers').trim(), sections: Object.fromEntries(SECTIONS.map((s) => [s, f.get('s-' + s).trim()]).filter(([, u]) => u)) };
-      const bad = [value.announce, value.officers, ...Object.values(value.sections)].filter((u) => u && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(u));
+      const value = { announce: f.get('announce').trim(), officers: f.get('officers').trim(), sections: Object.fromEntries(SECTIONS.map((s) => [s, f.get('s-' + s).trim()]).filter(([, u]) => u)),
+        channels: Object.fromEntries(Object.keys(CH_LABEL).map((k) => [k, f.get('c-' + k).trim()]).filter(([, u]) => u)) };
+      const bad = [value.announce, value.officers, ...Object.values(value.sections), ...Object.values(value.channels)].filter((u) => u && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(u));
       if (bad.length) return toast('Webhook 網址格式不對，應以 https://discord.com/api/webhooks/ 開頭', 'bad');
       const a = await run(() => sb.from('private_settings').upsert({ key: 'discord', value }));
       const b = await setVal('notify', { channel: 'discord' });
@@ -80,6 +82,7 @@ route('/settings', async () => {
       <form id="notify" class="grid-form">
         <label class="full">公告頻道 Webhook<input name="announce" value="${esc(hooks.announce || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
         <label class="full">幹部頻道 Webhook<input name="officers" value="${esc(hooks.officers || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
+        ${Object.entries(CH_LABEL).map(([k, l]) => `<label>${l}頻道（選填）<input name="c-${k}" value="${esc(hooks.channels?.[k] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}
         ${SECTIONS.map((s) => `<label>${s}組頻道（選填）<input name="s-${s}" value="${esc(hooks.sections?.[s] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}
         <button class="btn">儲存通知設定</button>
       </form><p class="small muted">Webhook 在 Discord 頻道設定 → 整合 → Webhook 建立。這些網址只有管理員看得到。</p></section>

@@ -137,6 +137,28 @@ test('招生：關閉報名後不能送出', async () => {
   assert.match(ins.error, /row-level security/);
 });
 
+test('頻道：社員可以在「音樂會」分享，但不能在公告、絲竹、校友團發文', async () => {
+  assert.equal((await as(B, `insert into announcements (channel,title,venue) values ('concerts','北市國週年音樂會','中山堂')`)).error, undefined);
+  for (const ch of ['main', 'sizhu', 'alumni']) {
+    assert.match((await as(B, `insert into announcements (channel,title) values ('${ch}','x')`)).error, /row-level security/, ch);
+  }
+  assert.equal((await as(A, `insert into announcements (channel,title) values ('sizhu','絲竹週四改 721')`)).error, undefined);
+});
+
+test('頻道：社員只能刪自己分享的音樂會，幹部都能刪', async () => {
+  await as(A, `insert into announcements (channel,title) values ('concerts','幹部分享的')`);
+  await as(B, `delete from announcements where channel='concerts' and title='幹部分享的'`);
+  assert.equal((await as(A, `select 1 from announcements where title='幹部分享的'`)).rows.length, 1);
+  await as(B, `delete from announcements where title='北市國週年音樂會'`);
+  assert.equal((await as(A, `select 1 from announcements where title='北市國週年音樂會'`)).rows.length, 0);
+});
+
+test('頻道：槍手看不到絲竹與校友團', async () => {
+  await as(A, `insert into announcements (channel,title) values ('alumni','校友團年度聚會')`);
+  assert.equal((await as(R, `select 1 from announcements where channel in ('sizhu','alumni')`)).rows.length, 0);
+  assert.equal((await as(B, `select 1 from announcements where channel in ('sizhu','alumni')`)).rows.length, 2);
+});
+
 test('別人看不到我的手機與信箱', async () => {
   assert.equal((await as(B, `select * from profile_private where user_id='${A}'`)).rows.length, 0);
 });

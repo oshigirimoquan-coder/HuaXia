@@ -20,6 +20,12 @@
 - 驗證：`npm test` 25/25；Playwright 桌機／手機截圖無橫向捲動、無 JS 錯誤。
 - 上線前要在 Supabase 重新執行一次 `supabase/schema.sql`（可重複執行，不會刪資料）。
 
+## 2026-10-08 頻道與導覽列
+- 新增頻道（`announcements.channel`）：公告 main、絲竹 sizhu（附絲竹行程）、音樂會 concerts（社內成員都能分享，只能改刪自己的）、校友團 alumni。
+- 導覽列依性質分段（練習／社團／交流），電腦版可左右捲動；槍手、招生、設定在「幹部」下拉選單。
+- 通知依頻道送到對應 DC webhook（設定頁可填，沒填就送公告頻道）。
+- 驗證：`npm test` 28/28；桌機 1280／960、手機 375 截圖無橫向捲動與 JS 錯誤。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。

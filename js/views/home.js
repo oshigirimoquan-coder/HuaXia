@@ -25,7 +25,7 @@ route('/', async () => {
   const [evs, leaves, anns, reads, tasks, stats, pending] = await Promise.all([
     sb.from('events').select('*').gte('starts_at', nowIso).order('starts_at').limit(8),
     sb.from('leave_requests').select('*').eq('user_id', me()),
-    sb.from('announcements').select('*').order('created_at', { ascending: false }).limit(20),
+    sb.from('announcements').select('*').eq('channel', 'main').order('created_at', { ascending: false }).limit(20),
     sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
     sb.from('tasks').select('*').neq('status', 'done').order('due', { ascending: true }),
     state.semester ? sb.rpc('attendance_stats', { sem: state.semester.id }) : { data: [] },

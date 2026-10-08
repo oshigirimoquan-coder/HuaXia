@@ -13,29 +13,42 @@ import './views/settings.js';
 import './views/me.js';
 import { joinScreen } from './views/recruit.js';
 
+// group：電腦版依性質分段（中間有分隔線），手機版「更多」裡分組列出；mgr 收進「幹部」下拉選單
 const NAV = [
   { path: '/', label: '首頁', main: true },
-  { path: '/events', label: '行程', main: true },
-  { path: '/pieces', label: '曲目', main: true },
-  { path: '/announcements', label: '公告', main: true, badge: true },
-  { path: '/attendance', label: '出席', show: (p) => !p.ringerOnly },
-  { path: '/tasks', label: '任務', show: (p) => !p.ringerOnly },
-  { path: '/teaching', label: '教學', show: (p) => p.insider },
-  { path: '/members', label: '成員', show: (p) => p.insider },
-  { path: '/ringers', label: '槍手', show: (p) => p.officer },
-  { path: '/recruit', label: '招生', show: (p) => p.officer },
-  { path: '/settings', label: '設定', show: (p) => p.admin },
-  { path: '/me', label: '我的設定', mobileOnly: true },
+  { path: '/events', label: '行程', main: true, group: '練習' },
+  { path: '/pieces', label: '曲目', main: true, group: '練習' },
+  { path: '/attendance', label: '出席', group: '練習', show: (p) => !p.ringerOnly },
+  { path: '/teaching', label: '教學', group: '練習', show: (p) => p.insider },
+  { path: '/announcements', label: '公告', main: true, badge: true, group: '社團' },
+  { path: '/tasks', label: '任務', group: '社團', show: (p) => !p.ringerOnly },
+  { path: '/members', label: '成員', group: '社團', show: (p) => p.insider },
+  { path: '/sizhu', label: '絲竹', group: '交流', show: (p) => p.insider },
+  { path: '/concerts', label: '音樂會', group: '交流', show: (p) => p.insider },
+  { path: '/alumni', label: '校友團', group: '交流', show: (p) => p.insider },
+  { path: '/ringers', label: '槍手', group: '幹部', mgr: true, show: (p) => p.officer },
+  { path: '/recruit', label: '招生', group: '幹部', mgr: true, show: (p) => p.officer },
+  { path: '/settings', label: '設定', group: '幹部', mgr: true, show: (p) => p.admin },
+  { path: '/me', label: '我的設定', mobileOnly: true, group: '個人' },
 ];
 
-// 電腦版收進「幹部」下拉選單的頁面，避免分頁太多時被擠到看不見
-const MGR = ['/ringers', '/recruit', '/settings'];
+const MGR = NAV.filter((n) => n.mgr).map((n) => n.path);
 document.addEventListener('click', (e) => { const d = document.querySelector('.mgr[open]'); if (d && (!d.contains(e.target) || e.target.closest('a'))) d.open = false; });
 
 // 標誌動畫每次開啟網站只播一次
 function firstVisit() {
   try { if (sessionStorage.getItem('hx-written')) return false; sessionStorage.setItem('hx-written', '1'); } catch { }
   return true;
+}
+
+function tabLinks(list) {
+  let prev = null;
+  return list.map((n) => { const sep = prev !== null && n.group !== prev ? '<span class="tab-sep" aria-hidden="true"></span>' : ''; prev = n.group || '';
+    return `${sep}<a href="#${n.path}" data-nav="${n.path}">${n.label}${n.badge ? '<i class="badge" hidden></i>' : ''}</a>`; }).join('');
+}
+function moreGroups(list) {
+  const groups = [...new Set(list.map((n) => n.group))];
+  return groups.map((g) => `<div class="more-g"><span>${g}</span>${list.filter((n) => n.group === g).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}</a>`).join('')}</div>`).join('');
 }
 
 function shell() {
@@ -46,8 +59,8 @@ function shell() {
   $('#app').innerHTML = `
     <header class="top"><div class="top-in">
       <a class="brand" href="#/" aria-label="${esc(state.settings.team_name || '華夏國樂社')} 首頁">${mark(animate)}<span class="seal ${animate ? 'stamp-in' : ''}">華</span></a>
-      <nav class="tabs" aria-label="主選單">${items.filter((n) => !n.mobileOnly && !MGR.includes(n.path)).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}${n.badge ? '<i class="badge" hidden></i>' : ''}</a>`).join('')}
-        ${items.some((n) => MGR.includes(n.path)) ? `<details class="mgr"><summary>幹部</summary><div class="mgr-menu">${items.filter((n) => MGR.includes(n.path)).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}</a>`).join('')}</div></details>` : ''}</nav>
+      <nav class="tabs" aria-label="主選單">${tabLinks(items.filter((n) => !n.mobileOnly && !n.mgr))}</nav>
+      ${items.some((n) => n.mgr) ? `<details class="mgr"><summary>幹部</summary><div class="mgr-menu">${items.filter((n) => n.mgr).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}</a>`).join('')}</div></details>` : ''}
       <a class="me-link" href="#/me" data-nav="/me"><span>${esc(nameOf(me()))}</span>${avatar(me(), 30)}</a>
     </div></header>
     <main id="main" tabindex="-1"></main>
@@ -55,7 +68,7 @@ function shell() {
       ${items.filter((n) => n.main).map((n) => `<a href="#${n.path}" data-nav="${n.path}"><i class="dot"></i>${n.label}${n.badge ? '<i class="badge" hidden></i>' : ''}</a>`).join('')}
       <button id="more-btn" aria-expanded="false" aria-controls="more"><i class="dot"></i>更多</button>
     </nav>
-    <div id="more" class="more" hidden><div class="more-sheet">${items.filter((n) => !n.main).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}</a>`).join('')}</div></div>
+    <div id="more" class="more" hidden><div class="more-sheet">${moreGroups(items.filter((n) => !n.main))}</div></div>
     ${DEMO ? '<div class="demo-flag">示範模式・資料為虛構</div>' : ''}`;
   const more = $('#more'), btn = $('#more-btn');
   btn.onclick = () => { more.hidden = !more.hidden; btn.setAttribute('aria-expanded', String(!more.hidden)); };
@@ -64,7 +77,7 @@ function shell() {
 
 async function refreshUnread() {
   const [{ data: anns }, { data: reads }] = await Promise.all([
-    sb.from('announcements').select('id').limit(100), sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
+    sb.from('announcements').select('id').eq('channel', 'main').limit(100), sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
   ]);
   const r = new Set((reads || []).map((x) => x.ann_id));
   const n = (anns || []).filter((a) => !r.has(a.id)).length;
@@ -78,6 +91,8 @@ document.addEventListener('routed', (e) => {
     a.toggleAttribute('aria-current', n === '/' ? path === '/' : path.startsWith(n));
   });
   $('.mgr')?.classList.toggle('on', MGR.some((m) => path.startsWith(m)));
+  const cur = () => $('.tabs a[aria-current]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  cur(); setTimeout(cur, 400); document.fonts?.ready.then(cur);
   window.scrollTo(0, 0);
 });
 document.addEventListener('unread-changed', () => refreshUnread());

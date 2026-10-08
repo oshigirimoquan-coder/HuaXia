@@ -122,11 +122,15 @@ Deno.serve(async (req) => {
     if (body.type === "announcement") {
       const { data: a } = await db.from("announcements").select("*").eq("id", body.id).single();
       if (!a) return json({ error: "找不到公告" }, 404);
-      const url = a.audience === "officers" ? hooks.officers
+      const CH: Record<string, string> = { sizhu: "絲竹", concerts: "音樂會分享", alumni: "校友團" };
+      const url = a.channel && a.channel !== "main" ? (hooks.channels?.[a.channel] ?? hooks.announce)
+        : a.audience === "officers" ? hooks.officers
         : a.audience === "section" ? (hooks.sections?.[a.section] ?? hooks.announce)
         : hooks.announce;
-      const head = a.type === "urgent" ? "🔴 **【緊急】**" : `**【${TYPE[a.type] ?? "公告"}】**`;
-      const text = `${head} ${a.title}\n${a.body}${SITE ? `\n\n${SITE}#/announcements` : ""}`;
+      const head = a.type === "urgent" ? "🔴 **【緊急】**" : `**【${CH[a.channel] ?? TYPE[a.type] ?? "公告"}】**`;
+      const where = a.channel === "concerts" ? [a.event_at ? `🗓 ${twTime(a.event_at)}` : "", a.venue ? `📍 ${a.venue}` : "", a.link].filter(Boolean).join("　") : "";
+      const page = ({ sizhu: "sizhu", concerts: "concerts", alumni: "alumni" } as Record<string, string>)[a.channel] ?? "announcements";
+      const text = `${head} ${a.title}${where ? `\n${where}` : ""}\n${a.body}${SITE ? `\n\n${SITE}#/${page}` : ""}`;
       if (channel === "discord" || channel === "both") {
         if (a.audience === "ringers") {
           // 槍手不在社團 DC，等 Email 管道決定後再寄
