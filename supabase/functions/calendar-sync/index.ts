@@ -3,7 +3,7 @@
 //         "acl"    （管理員）把幹部的 Google 信箱加入「幹部」行事曆的讀取名單
 //         "upsert" （幹部）新增或更新一筆行程 {event_id}
 //         "delete" （幹部）刪除 Google 上的行程 {calendar_key, gcal_event_id}
-import { admin, callerIs, cors, gcal, json, KIND } from "../_shared/common.ts";
+import { admin, callerIs, cors, gcal, json, kindText } from "../_shared/common.ts";
 
 const SITE = Deno.env.get("SITE_URL") ?? "";
 
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
         SITE ? `請假與詳情：${SITE}#/events/${ev.id}` : "",
       ].filter(Boolean).join("\n\n");
       const payload = {
-        summary: `[${KIND[ev.kind] ?? "活動"}] ${ev.title}`,
+        summary: `[${kindText(ev)}] ${ev.title}`,
         location: ev.location,
         description: desc,
         start: { dateTime: ev.starts_at, timeZone: "Asia/Taipei" },

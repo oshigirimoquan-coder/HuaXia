@@ -99,7 +99,7 @@ async function channelPage(ch) {
   const [{ data }, { data: reads }, evs] = await Promise.all([
     sb.from('announcements').select('*').eq('channel', ch).order('created_at', { ascending: false }).limit(100),
     sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
-    ch === 'sizhu' ? sb.from('events').select('*').eq('kind', 'sizhu').gte('starts_at', nowIso).order('starts_at').limit(6) : { data: [] },
+    ch === 'sizhu' ? sb.from('events').select('*').contains('kinds', ['sizhu']).gte('starts_at', nowIso).order('starts_at').limit(6) : { data: [] },
   ]);
   const read = new Set((reads || []).map((r) => r.ann_id));
   let list = (data || []).filter((a) => !f || a.type === f);

@@ -208,6 +208,19 @@ create table if not exists public.events (
 );
 create index if not exists events_time on public.events (starts_at);
 
+-- 類型可以複選（例：大團＋絲竹、總彩＋公演）；kind 自動等於第一個，給只看單一類型的地方用
+alter table public.events add column if not exists kinds text[] not null default '{}'
+  check (kinds <@ array['tutti','sizhu','extra','sectional','class','dress','concert','officer','other']::text[]);
+create or replace function public.events_kinds() returns trigger language plpgsql as $$
+begin
+  if new.kinds is null or cardinality(new.kinds) = 0 then new.kinds := array[new.kind]; end if;
+  new.kind := new.kinds[1];
+  return new;
+end $$;
+drop trigger if exists events_kinds on public.events;
+create trigger events_kinds before insert or update on public.events for each row execute function public.events_kinds();
+update public.events set kinds = array[kind] where cardinality(kinds) = 0;
+
 create table if not exists public.event_pieces (
   event_id uuid references public.events(id) on delete cascade,
   piece_id uuid references public.pieces(id) on delete cascade,
@@ -403,7 +416,8 @@ $$;
 -- 某人是否「應出席」某次行程（自動判斷無曲）
 create or replace function public.is_expected(e public.events, uid uuid) returns boolean
 language plpgsql stable security definer set search_path = public as $$
-declare rules jsonb; is_ringer_only boolean;
+declare rules jsonb; is_ringer_only boolean; k text;
+  has_pieces boolean := exists (select 1 from event_pieces where event_id = e.id);
 begin
   if not e.counts_attendance then return false; end if;
   if not exists (select 1 from profiles where id = uid and status = 'active') then return false; end if;
@@ -411,19 +425,25 @@ begin
   is_ringer_only := not exists (select 1 from user_roles where user_id = uid
     and role in ('admin','officer','leader','member','newbie'));
   if is_ringer_only and not coalesce((rules->>'count_ringers')::boolean, false) then return false; end if;
-  if e.kind = 'officer' then
-    return exists (select 1 from user_roles where user_id = uid and role in ('admin','officer'));
-  elsif e.kind = 'sectional' then
-    return exists (select 1 from profiles where id = uid and section = e.section);
-  elsif e.kind = 'class' then
-    return exists (select 1 from class_students where class_id = e.class_id and user_id = uid);
-  elsif exists (select 1 from event_pieces where event_id = e.id) then
-    return exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
-      join part_assignments pa on pa.part_id = pp.id left join ringers r on r.id = pa.ringer_id
-      where ep.event_id = e.id and (pa.user_id = uid or r.user_id = uid));
-  else
-    return not is_ringer_only;
-  end if;
+  -- 複選類型：符合其中任一種就算應出席
+  foreach k in array (case when cardinality(e.kinds) > 0 then e.kinds else array[e.kind] end) loop
+    if k = 'officer' then
+      if exists (select 1 from user_roles where user_id = uid and role in ('admin','officer')) then return true; end if;
+    elsif k = 'sectional' then
+      if exists (select 1 from profiles where id = uid and section = e.section) then return true; end if;
+    elsif k = 'class' then
+      if exists (select 1 from class_students where class_id = e.class_id and user_id = uid) then return true; end if;
+    elsif has_pieces then
+      if exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
+        join part_assignments pa on pa.part_id = pp.id left join ringers r on r.id = pa.ringer_id
+        where ep.event_id = e.id and (pa.user_id = uid or r.user_id = uid)) then return true; end if;
+    elsif k = 'sizhu' and exists (select 1 from ensemble_members where ensemble = 'sizhu') then
+      if exists (select 1 from ensemble_members where ensemble = 'sizhu' and user_id = uid) then return true; end if;
+    elsif not is_ringer_only then
+      return true;
+    end if;
+  end loop;
+  return false;
 end $$;
 
 -- 點名名單：應出席的人 + 已有紀錄的人，附請假與點名狀態

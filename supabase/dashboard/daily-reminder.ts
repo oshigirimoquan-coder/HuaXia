@@ -92,6 +92,11 @@ export const KIND: Record<string, string> = {
   dress: "總彩", concert: "公演", officer: "幹部會議", other: "活動",
 };
 
+// 複選類型：大團・絲竹；只有幹部會議時才算幹部行程
+export const kindsOf = (e: any): string[] => (e.kinds?.length ? e.kinds : [e.kind]);
+export const kindText = (e: any) => kindsOf(e).map((k) => KIND[k] ?? "活動").join("・");
+export const officerOnly = (e: any) => kindsOf(e).every((k) => k === "officer");
+
 export const twTime = (iso: string) =>
   new Date(iso).toLocaleString("zh-TW", {
     timeZone: "Asia/Taipei", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
@@ -121,10 +126,10 @@ Deno.serve(async (req) => {
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
   const line = (e: any) => {
     const ps = (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean);
-    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${KIND[e.kind] ?? "活動"}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
+    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${kindText(e)}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
   };
-  const pub = (events ?? []).filter((e) => e.kind !== "officer");
-  const off = (events ?? []).filter((e) => e.kind === "officer");
+  const pub = (events ?? []).filter((e) => !officerOnly(e));
+  const off = (events ?? []).filter((e) => officerOnly(e));
   const sent: string[] = [];
   if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
 

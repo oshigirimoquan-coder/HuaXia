@@ -1,5 +1,5 @@
 import { sb, state, me, route, esc, pageHead, empty, nameOf, fmtDate, fmtTime } from '../core.js';
-import { ANN_TYPE, KIND_LABEL, LEAVE_LABEL, rateLevel, daysFromToday, twParts, twWeekday, backupDue } from '../logic.js';
+import { ANN_TYPE, KIND_LABEL, LEAVE_LABEL, rateLevel, daysFromToday, twParts, twWeekday, backupDue, kindsLabel } from '../logic.js';
 import { eventCard } from './events.js';
 import { taskRow, bindTasks } from './tasks.js';
 
@@ -52,7 +52,7 @@ route('/', async () => {
     const myLeave = lv.get(next.id);
     hero = `<section class="hero"><div class="hero-in"><div>
       <p class="hello">${esc(nameOf(me()))}，${hi}</p>
-      <div class="next-k">下一次${KIND_LABEL[next.kind]}・${d === 0 ? '今天' : d === 1 ? '明天' : `${d} 天後`}</div>
+      <div class="next-k">下一次${kindsLabel(next)}・${d === 0 ? '今天' : d === 1 ? '明天' : `${d} 天後`}</div>
       <div class="next-t">${esc(next.title)}</div>
       <div class="next-m"><b>${t.month}/${t.day}（${twWeekday(next.starts_at)}）${fmtTime(next.starts_at)}–${fmtTime(next.ends_at)}</b>${next.location ? `<span>${esc(next.location)}</span>` : ''}</div>
       ${myLeave ? `<div class="next-state">你已${LEAVE_LABEL[myLeave.type]}：${esc(myLeave.reason)}</div>` : `<div class="next-note">${untilText(next.starts_at)}</div>`}

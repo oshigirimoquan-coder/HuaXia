@@ -126,6 +126,7 @@ class Q {
   gte(k, v) { this.f.push((r) => r[k] >= v); return this; }
   lte(k, v) { this.f.push((r) => r[k] <= v); return this; }
   lt(k, v) { this.f.push((r) => r[k] < v); return this; }
+  contains(k, v) { this.f.push((r) => v.every((x) => (r[k] || [r.kind]).includes(x))); return this; }
   not(k, op, v) { this.f.push((r) => r[k] !== v && r[k] !== undefined); return this; }
   order(k, o = {}) { this.ord = [k, o.ascending !== false]; return this; }
   limit(n) { this.lim = n; return this; }

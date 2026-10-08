@@ -34,6 +34,11 @@
 - 設定頁「匯出備份」：26 個表格 JSON＋出席率 CSV＋名冊 CSV（不含 private_settings）；`settings.last_backup_at`；`backupDue()` 控制首頁提醒。
 - `docs/MAINTENANCE.md`。`npm test` 33/33。
 
+## 2026-10-08 行程類型複選
+- `events.kinds text[]`；觸發器讓 `kind` = 第一個（照類型順序），舊資料自動補 `kinds`。
+- `is_expected` 改成任一類型符合就算應出席；絲竹排練沒指定曲目時只算絲竹名單上的人（名單是空的就算全體）。
+- 前端 `kindsDefaults()`／`kindsLabel()`；通知、行事曆、每日提醒顯示「大團・絲竹」。`npm test` 38/38。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。

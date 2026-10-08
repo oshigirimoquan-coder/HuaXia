@@ -177,6 +177,34 @@ test('絲竹標記：公告可以標記人，被標記的人查得到提到自�
   assert.equal((await as(R, `select 1 from my_mentions()`)).rows.length, 0);
 });
 
+test('行程類型可以複選：主要類型自動取第一個', async () => {
+  const r = await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+    ('${E(6)}','${S}',array['dress','concert'],'總彩＋公演','2026-12-10 14:00+08','2026-12-10 21:00+08','tutti') returning kind`);
+  assert.equal(r.error, undefined);
+  assert.equal(r.rows[0].kind, 'dress');
+  const old = await as(A, `select kinds from events where id='${E(1)}'`);
+  assert.deepEqual(old.rows[0].kinds, ['tutti']);  // 舊資料自動補上
+});
+
+test('複選類型：只要符合其中一種就算應出席（幹部會議＋拉弦分部課）', async () => {
+  await as(A, `insert into events (id,semester_id,kinds,section,title,starts_at,ends_at,calendar_key) values
+    ('${E(7)}','${S}',array['officer','sectional'],'拉弦','幹部＋拉弦','2026-10-20 12:00+08','2026-10-20 13:00+08','officers')`);
+  const { rows } = await as(A, `select p.id, public.is_expected(e, p.id) as ok from events e, profiles p where e.id='${E(7)}' order by p.id`);
+  const ok = Object.fromEntries(rows.map((x) => [x.id, x.ok]));
+  assert.equal(ok[A], true);   // 幹部
+  assert.equal(ok[B], true);   // 拉弦
+  assert.equal(ok[R], false);  // 槍手
+});
+
+test('絲竹排練沒指定曲目時，只有絲竹名單上的人算應出席', async () => {
+  await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+    ('${E(8)}','${S}',array['sizhu'],'絲竹排練','2026-10-22 19:00+08','2026-10-22 21:00+08','tutti')`);
+  const { rows } = await as(A, `select p.id, public.is_expected(e, p.id) as ok from events e, profiles p where e.id='${E(8)}'`);
+  const ok = Object.fromEntries(rows.map((x) => [x.id, x.ok]));
+  assert.equal(ok[B], true);   // 在絲竹名單
+  assert.equal(ok[A], false);  // 不在
+});
+
 test('Discord ID 對照只有後端能查，一般登入者不能呼叫', async () => {
   assert.match((await as(B, `select * from discord_ids(array['${B}']::uuid[])`)).error, /permission denied/);
 });

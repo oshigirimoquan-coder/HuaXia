@@ -2,7 +2,7 @@
 // body: { type: "announcement", id } | { type: "event", id?, change: "created"|"updated"|"deleted", title?, starts_at? }
 // 管道由 settings.notify.channel 決定："discord" | "email" | "both"（待社長決定）
 // Discord webhook 存在 private_settings.discord = { announce, officers, sections: { 吹管: url, ... } }
-import { admin, callerIs, cors, discord, json, KIND, twTime } from "../_shared/common.ts";
+import { admin, callerIs, cors, discord, json, kindsOf, kindText, officerOnly, twTime } from "../_shared/common.ts";
 
 const SITE = Deno.env.get("SITE_URL") ?? "";
 const TYPE: Record<string, string> = {
@@ -62,8 +62,8 @@ Deno.serve(async (req) => {
         if (data) ev = { ...data, change: body.change };
       }
       const verb = body.change === "created" ? "新增行程" : body.change === "deleted" ? "取消行程" : "行程異動";
-      const text = `**【${verb}】** [${KIND[ev.kind] ?? "活動"}] ${ev.title}\n🕖 ${twTime(ev.starts_at)}${ev.location ? `　📍 ${ev.location}` : ""}${SITE && ev.id && body.change !== "deleted" ? `\n${SITE}#/events/${ev.id}` : ""}`;
-      const url = ev.kind === "officer" ? hooks.officers : ev.kind === "sectional" ? (hooks.sections?.[ev.section] ?? hooks.announce) : hooks.announce;
+      const text = `**【${verb}】** [${kindText(ev)}] ${ev.title}\n🕖 ${twTime(ev.starts_at)}${ev.location ? `　📍 ${ev.location}` : ""}${SITE && ev.id && body.change !== "deleted" ? `\n${SITE}#/events/${ev.id}` : ""}`;
+      const url = officerOnly(ev) ? hooks.officers : kindsOf(ev).includes("sectional") && kindsOf(ev).length === 1 ? (hooks.sections?.[ev.section] ?? hooks.announce) : hooks.announce;
       if ((channel === "discord" || channel === "both") && await discord(url, text)) sent.push("discord");
       return json({ ok: true, sent });
     }

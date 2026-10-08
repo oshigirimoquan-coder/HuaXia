@@ -92,6 +92,11 @@ export const KIND: Record<string, string> = {
   dress: "總彩", concert: "公演", officer: "幹部會議", other: "活動",
 };
 
+// 複選類型：大團・絲竹；只有幹部會議時才算幹部行程
+export const kindsOf = (e: any): string[] => (e.kinds?.length ? e.kinds : [e.kind]);
+export const kindText = (e: any) => kindsOf(e).map((k) => KIND[k] ?? "活動").join("・");
+export const officerOnly = (e: any) => kindsOf(e).every((k) => k === "officer");
+
 export const twTime = (iso: string) =>
   new Date(iso).toLocaleString("zh-TW", {
     timeZone: "Asia/Taipei", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
@@ -160,8 +165,8 @@ Deno.serve(async (req) => {
         if (data) ev = { ...data, change: body.change };
       }
       const verb = body.change === "created" ? "新增行程" : body.change === "deleted" ? "取消行程" : "行程異動";
-      const text = `**【${verb}】** [${KIND[ev.kind] ?? "活動"}] ${ev.title}\n🕖 ${twTime(ev.starts_at)}${ev.location ? `　📍 ${ev.location}` : ""}${SITE && ev.id && body.change !== "deleted" ? `\n${SITE}#/events/${ev.id}` : ""}`;
-      const url = ev.kind === "officer" ? hooks.officers : ev.kind === "sectional" ? (hooks.sections?.[ev.section] ?? hooks.announce) : hooks.announce;
+      const text = `**【${verb}】** [${kindText(ev)}] ${ev.title}\n🕖 ${twTime(ev.starts_at)}${ev.location ? `　📍 ${ev.location}` : ""}${SITE && ev.id && body.change !== "deleted" ? `\n${SITE}#/events/${ev.id}` : ""}`;
+      const url = officerOnly(ev) ? hooks.officers : kindsOf(ev).includes("sectional") && kindsOf(ev).length === 1 ? (hooks.sections?.[ev.section] ?? hooks.announce) : hooks.announce;
       if ((channel === "discord" || channel === "both") && await discord(url, text)) sent.push("discord");
       return json({ ok: true, sent });
     }

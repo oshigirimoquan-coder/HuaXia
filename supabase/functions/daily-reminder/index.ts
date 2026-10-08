@@ -1,6 +1,6 @@
 // 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
-import { admin, cors, discord, json, KIND } from "../_shared/common.ts";
+import { admin, cors, discord, json, kindText, officerOnly } from "../_shared/common.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -23,10 +23,10 @@ Deno.serve(async (req) => {
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
   const line = (e: any) => {
     const ps = (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean);
-    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${KIND[e.kind] ?? "活動"}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
+    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${kindText(e)}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
   };
-  const pub = (events ?? []).filter((e) => e.kind !== "officer");
-  const off = (events ?? []).filter((e) => e.kind === "officer");
+  const pub = (events ?? []).filter((e) => !officerOnly(e));
+  const off = (events ?? []).filter((e) => officerOnly(e));
   const sent: string[] = [];
   if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
 

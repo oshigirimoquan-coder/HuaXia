@@ -1,5 +1,5 @@
 import { sb, state, me, route, go, esc, run, toast, formDialog, armDelete, pageHead, empty, fmtDate, fmtTime, fmtRange, chipPerson, nameOf, sectionChip, render, $, $$, DEMO } from '../core.js';
-import { KIND_LABEL, LEAVE_LABEL, ATT_LABEL, SECTIONS, eventDefaults, twParts, twWeekday, twToIso, daysFromToday, defaultRollStatus } from '../logic.js';
+import { KIND_LABEL, LEAVE_LABEL, ATT_LABEL, SECTIONS, eventDefaults, kindsDefaults, kindsLabel, twParts, twWeekday, twToIso, daysFromToday, defaultRollStatus } from '../logic.js';
 
 export async function invokeFn(name, body) {
   if (DEMO) return { ok: true };
@@ -20,7 +20,7 @@ export function eventCard(e, { leave } = {}) {
   return `<a class="ev-card kind-${e.kind} ${d < 0 ? 'past' : ''}" href="#/events/${e.id}">
     <div class="ev-date"><b>${t.month}/${t.day}</b><span>週${twWeekday(e.starts_at)}</span></div>
     <div class="ev-body">
-      <div class="ev-top"><span class="kind">${KIND_LABEL[e.kind]}</span>${e.section ? sectionChip(e.section) : ''}</div>
+      <div class="ev-top"><span class="kind">${kindsLabel(e)}</span>${e.section ? sectionChip(e.section) : ''}</div>
       <h3>${esc(e.title)}</h3>
       <p class="meta"><span class="mono">${fmtTime(e.starts_at)}–${fmtTime(e.ends_at)}</span>${e.location ? `　${esc(e.location)}` : ''}</p>
     </div>
@@ -41,14 +41,14 @@ export async function editEvent(ev = null) {
     title: ev ? '編輯行程' : '新增行程',
     danger: ev ? '刪除' : null,
     fields: [
-      { name: 'kind', label: '類型', type: 'select', value: ev?.kind || 'tutti', options: Object.entries(KIND_LABEL) },
+      { name: 'kinds', label: '類型（可複選）', type: 'checks', full: true, value: ev?.kinds?.length ? ev.kinds : [ev?.kind || 'tutti'], options: Object.entries(KIND_LABEL), hint: '例：同一場有大團也有絲竹，就兩個都勾' },
       { name: 'title', label: '名稱', required: true, value: ev?.title, placeholder: '例：週二大團、11/14 吹管分部課' },
       { name: 'date', label: '日期', type: 'date', required: true, value: s?.date || twParts(new Date()).date },
       { name: 'start', label: '開始', type: 'time', required: true, value: s?.time || '19:30' },
       { name: 'end', label: '結束', type: 'time', required: true, value: e2?.time || '21:30' },
       { name: 'location', label: '地點', value: ev?.location, placeholder: '例：721、視聽館' },
-      { name: 'section', label: '分部課組別', type: 'select', value: ev?.section || '', options: [['', '（不是分部課）'], ...SECTIONS.map((x) => [x, x])], hint: '類型選「分部課」時才需要' },
-      { name: 'class_id', label: '教學班', type: 'select', value: ev?.class_id || '', options: [['', '（不是教學班）'], ...classes.map((c) => [c.id, c.name])], hint: '類型選「教學班」時才需要' },
+      { name: 'section', label: '分部課組別', type: 'select', value: ev?.section || '', options: [['', '（不是分部課）'], ...SECTIONS.map((x) => [x, x])], hint: '有勾「分部課」時才需要' },
+      { name: 'class_id', label: '教學班', type: 'select', value: ev?.class_id || '', options: [['', '（不是教學班）'], ...classes.map((c) => [c.id, c.name])], hint: '有勾「教學班」時才需要' },
       { name: 'pieces', label: '這次練習的曲目', type: 'checks', value: cur, options: pieces, full: true, hint: '有勾選曲目時，沒被排到這些曲目的人自動算「無曲」，不計入出席率' },
       { name: 'note', label: '備註', type: 'textarea', value: ev?.note, full: true },
       { name: 'counts', label: '出席率', type: 'toggle', text: '這次計入出席率', value: ev ? ev.counts_attendance : true },
@@ -58,17 +58,20 @@ export async function editEvent(ev = null) {
   if (!v) return;
   if (v.__danger) { await deleteEvent(ev); return; }
   if (v.end <= v.start) { toast('結束時間要晚於開始時間', 'bad'); return; }
-  const defs = eventDefaults(v.kind, v.section);
+  if (!v.kinds.length) { toast('至少要選一個類型', 'bad'); return; }
+  const has = (k) => v.kinds.includes(k);
+  const defs = kindsDefaults(v.kinds, v.section);
   const row = {
-    kind: v.kind, title: v.title, location: v.location, note: v.note,
+    kinds: v.kinds, kind: defs.kind, title: v.title, location: v.location, note: v.note,
     starts_at: twToIso(v.date, v.start), ends_at: twToIso(v.date, v.end),
-    section: v.kind === 'sectional' ? v.section || null : null,
-    class_id: v.kind === 'class' ? v.class_id || null : null,
+    section: has('sectional') ? v.section || null : null,
+    class_id: has('class') ? v.class_id || null : null,
     calendar_key: defs.calendar_key, audience: defs.audience,
-    counts_attendance: v.kind === 'officer' ? false : v.counts,
+    counts_attendance: defs.counts ? v.counts : false,
     semester_id: ev?.semester_id || state.semester.id,
   };
-  if (v.kind === 'sectional' && !row.section) { toast('分部課要選組別', 'bad'); return; }
+  if (has('sectional') && !row.section) { toast('有勾分部課，要選組別', 'bad'); return; }
+  if (has('class') && !row.class_id) { toast('有勾教學班，要選是哪一班', 'bad'); return; }
   const saved = await run(() => ev ? sb.from('events').update(row).eq('id', ev.id).select().single() : sb.from('events').insert(row).select().single());
   if (!saved) return;
   const id = saved.data.id;
@@ -89,7 +92,7 @@ async function deleteEvent(ev) {
   const ok = await run(() => sb.from('events').delete().eq('id', ev.id), '已刪除行程');
   if (!ok) return;
   if (ev.gcal_event_id) await invokeFn('calendar-sync', { action: 'delete', calendar_key: ev.calendar_key, gcal_event_id: ev.gcal_event_id }).catch(() => {});
-  await invokeFn('notify', { type: 'event', change: 'deleted', kind: ev.kind, title: ev.title, starts_at: ev.starts_at, location: ev.location, section: ev.section }).catch(() => {});
+  await invokeFn('notify', { type: 'event', change: 'deleted', kind: ev.kind, kinds: ev.kinds, title: ev.title, starts_at: ev.starts_at, location: ev.location, section: ev.section }).catch(() => {});
   go('/events');
 }
 
@@ -174,7 +177,7 @@ route('/events/:id', async ({ id }) => {
   const secOrder = (s) => { const i = SECTIONS.indexOf(s); return i < 0 ? 99 : i; };
   const secs = [...bySec].sort((a, b) => secOrder(a[0]) - secOrder(b[0]));
   return `<a class="back" href="#/events">← 行程</a>` +
-    pageHead(ev.title, `<span class="kind">${KIND_LABEL[ev.kind]}</span> ${ev.section ? sectionChip(ev.section) : ''} <span class="mono">${fmtRange(ev.starts_at, ev.ends_at)}</span>${ev.location ? ` · ${esc(ev.location)}` : ''}`,
+    pageHead(ev.title, `<span class="kind">${kindsLabel(ev)}</span> ${ev.section ? sectionChip(ev.section) : ''} <span class="mono">${fmtRange(ev.starts_at, ev.ends_at)}</span>${ev.location ? ` · ${esc(ev.location)}` : ''}`,
       p.officer ? '<button class="btn" id="edit-ev">編輯</button>' : '') +
     `<div class="grid2">
       <section class="card">

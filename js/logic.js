@@ -120,3 +120,23 @@ export function toCSV(rows) {
   };
   return '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n');
 }
+
+// 行程類型顯示文字（可複選，例：大團・絲竹）
+export function kindsLabel(e) {
+  const ks = e.kinds?.length ? e.kinds : [e.kind];
+  return ks.map((k) => KIND_LABEL[k] || k).join('・');
+}
+
+// 複選類型 → 主要類型（照 KIND_LABEL 的順序取第一個）、行事曆、可見對象、預設是否計出席
+export function kindsDefaults(kinds, section) {
+  const order = Object.keys(KIND_LABEL);
+  const ks = [...kinds].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const kind = ks[0];
+  const onlyOfficer = ks.every((k) => k === 'officer');
+  return {
+    kind,
+    calendar_key: eventDefaults(kind, section).calendar_key,
+    audience: onlyOfficer ? 'officers' : ks.some((k) => k === 'dress' || k === 'concert') ? 'all' : 'insiders',
+    counts: !onlyOfficer,
+  };
+}

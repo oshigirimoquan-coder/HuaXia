@@ -94,3 +94,16 @@ test('CSV：有逗號、引號、換行的欄位會加引號，開頭有 BOM 讓
   const csv = toCSV([['姓名', '備註'], ['小華', '晚到, "家教"\n下次早點']]);
   assert.equal(csv, '﻿姓名,備註\r\n小華,"晚到, ""家教""\n下次早點"');
 });
+
+test('複選類型的顯示文字', async () => {
+  const { kindsLabel } = await import('../js/logic.js');
+  assert.equal(kindsLabel({ kinds: ['tutti', 'sizhu'], kind: 'tutti' }), '大團・絲竹');
+  assert.equal(kindsLabel({ kind: 'dress' }), '總彩');
+});
+
+test('複選類型的預設：只有幹部會議才限幹部看；含總彩或公演時槍手也看得到', async () => {
+  const { kindsDefaults } = await import('../js/logic.js');
+  assert.deepEqual(kindsDefaults(['officer']), { kind: 'officer', calendar_key: 'officers', audience: 'officers', counts: false });
+  assert.deepEqual(kindsDefaults(['sectional', 'officer'], '拉弦'), { kind: 'sectional', calendar_key: 'sec-bow', audience: 'insiders', counts: true });
+  assert.deepEqual(kindsDefaults(['tutti', 'concert']), { kind: 'tutti', calendar_key: 'tutti', audience: 'all', counts: true });
+});
