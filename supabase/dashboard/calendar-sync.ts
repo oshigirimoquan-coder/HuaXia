@@ -77,12 +77,12 @@ export async function gcal(path: string, method = "GET", body?: unknown) {
 }
 
 // ---------- Discord ----------
-export async function discord(url: string | undefined, content: string) {
+export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}) {
   if (!url) return false;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content.slice(0, 1990), allowed_mentions: { parse: [] } }),
+    body: JSON.stringify({ content: content.slice(0, 1990), allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] } }),
   });
   return res.ok;
 }

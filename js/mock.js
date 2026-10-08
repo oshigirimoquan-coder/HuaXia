@@ -56,7 +56,7 @@ function fixtures() {
       { id: 'n1', channel: 'main', type: 'performance', audience: 'all', section: null, title: '期末公演總彩時間確定', body: '總彩在視聽館，14:00 集合搬樂器。槍手也請準時到。', pinned: true, author: uid(1), created_at: at(-2, '21:00') },
       { id: 'n2', channel: 'main', type: 'practice', audience: 'insiders', section: null, title: '下週二改在 621', body: '721 被借走，下週二大團改到 621。', pinned: false, author: uid(2), created_at: at(-1, '22:10') },
       { id: 'n3', channel: 'main', type: 'class', audience: 'newbies', section: null, title: '二胡入門班第一次上課', body: '請先把琴帶來，學長姐會教調音。', pinned: false, author: uid(1), created_at: at(-5, '20:00') },
-      { id: 'n4', channel: 'sizhu', type: 'other', audience: 'insiders', section: null, title: '絲竹本週練〈留傘調〉B 段', body: '請先聽示範錄音，揚琴與笛子對一下前奏。', pinned: false, author: uid(2), created_at: at(-1, '20:00') },
+      { id: 'n4', channel: 'sizhu', type: 'other', audience: 'insiders', section: null, mentions: [ME, uid(8)], mention_all: false, title: '絲竹本週練〈留傘調〉B 段', body: '請先聽示範錄音，揚琴與笛子對一下前奏。', pinned: false, author: uid(2), created_at: at(-1, '20:00') },
       { id: 'n5', channel: 'concerts', type: 'other', audience: 'insiders', section: null, title: '臺北市立國樂團 春季音樂會', body: '學生票 5 折，想去的可以揪。', venue: '中山堂', link: 'https://example.com', event_at: at(9, '19:30'), pinned: false, author: uid(6), created_at: at(-2, '22:00') },
       { id: 'n6', channel: 'concerts', type: 'other', audience: 'insiders', section: null, title: '北藝大國樂系 學期音樂會', body: '', venue: '北藝大音樂廳', link: '', event_at: at(18, '19:00'), pinned: false, author: ME, created_at: at(-1, '09:00') },
       { id: 'n7', channel: 'alumni', type: 'other', audience: 'insiders', section: null, title: '校友團年度音樂會招募團員', body: '12 月底演出，歡迎畢業學長姐回來。', pinned: true, author: uid(1), created_at: at(-4, '12:00') },
@@ -85,6 +85,7 @@ function fixtures() {
       { id: 'g2', name: '范以晴', school: '北科', instruments: '高笙', contact_user_id: uid(8), contact_info: '', status: 'contacting', note: '', user_id: null, created_at: at(-15, '10:00') },
       { id: 'g3', name: '游佳', school: '北藝', instruments: '揚琴', contact_user_id: uid(3), contact_info: '', status: 'declined', note: '公演那週有比賽', user_id: null, created_at: at(-12, '10:00') },
     ],
+    ensemble_members: [1, 2, 6, 7, 8].map((n) => ({ ensemble: 'sizhu', user_id: uid(n) })),
     applications: [
       { id: 'ap1', name: '吳小芸', grade: '資管一', contact: 'IG：@xiaoyun', experience: 'none', instruments_played: '', interests: ['拉弦'], want_class: true, message: '想學二胡！', status: 'new', officer_note: '', created_at: at(-1, '21:30') },
       { id: 'ap2', name: '林子豪', grade: '經濟二', contact: 'LINE：tzuhao', experience: 'basic', instruments_played: '國中學過笛子', interests: ['吹管'], want_class: false, message: '', status: 'contacted', officer_note: '10/7 已傳 LINE', created_at: at(-3, '12:10') },
@@ -176,6 +177,10 @@ function cell(e, id) {
   return { a, l, marked, status: a?.status ?? (marked && expected(e, id) ? (l?.type === 'leave' ? 'excused' : 'absent') : null) };
 }
 const RPC = {
+  my_mentions() {
+    const inSizhu = DB.ensemble_members.some((m) => m.user_id === ME);
+    return DB.announcements.filter((a) => (a.mentions || []).includes(ME) || (a.mention_all && inSizhu));
+  },
   event_roster({ eid }) {
     const e = DB.events.find((x) => x.id === eid);
     return DB.profiles.filter((p) => p.status === 'active').map((p) => { const c = cell(e, p.id); return { user_id: p.id, expected: expected(e, p.id), status: c.a?.status ?? null, note: '', leave_type: c.l?.type ?? null, leave_reason: c.l?.reason ?? null }; })

@@ -41,7 +41,9 @@ route('/settings', async () => {
     $('#notify')?.addEventListener('submit', async (e) => {
       e.preventDefault(); const f = new FormData(e.target);
       const value = { announce: f.get('announce').trim(), officers: f.get('officers').trim(), sections: Object.fromEntries(SECTIONS.map((s) => [s, f.get('s-' + s).trim()]).filter(([, u]) => u)),
-        channels: Object.fromEntries(Object.keys(CH_LABEL).map((k) => [k, f.get('c-' + k).trim()]).filter(([, u]) => u)) };
+        channels: Object.fromEntries(Object.keys(CH_LABEL).map((k) => [k, f.get('c-' + k).trim()]).filter(([, u]) => u)),
+        roles: Object.fromEntries([['sizhu', f.get('r-sizhu').trim()]].filter(([, u]) => u)) };
+      if (value.roles.sizhu && !/^\d{15,22}$/.test(value.roles.sizhu)) return toast('身分組 ID 應該是一串 17～20 位數字', 'bad');
       const bad = [value.announce, value.officers, ...Object.values(value.sections), ...Object.values(value.channels)].filter((u) => u && !/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(u));
       if (bad.length) return toast('Webhook 網址格式不對，應以 https://discord.com/api/webhooks/ 開頭', 'bad');
       const a = await run(() => sb.from('private_settings').upsert({ key: 'discord', value }));
@@ -82,10 +84,11 @@ route('/settings', async () => {
       <form id="notify" class="grid-form">
         <label class="full">公告頻道 Webhook<input name="announce" value="${esc(hooks.announce || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
         <label class="full">幹部頻道 Webhook<input name="officers" value="${esc(hooks.officers || '')}" placeholder="https://discord.com/api/webhooks/…"></label>
+        <label>絲竹 DC 身分組 ID（選填）<input name="r-sizhu" inputmode="numeric" value="${esc(hooks.roles?.sizhu || '')}" placeholder="填了才會 @全體絲竹成員"></label>
         ${Object.entries(CH_LABEL).map(([k, l]) => `<label>${l}頻道（選填）<input name="c-${k}" value="${esc(hooks.channels?.[k] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}
         ${SECTIONS.map((s) => `<label>${s}組頻道（選填）<input name="s-${s}" value="${esc(hooks.sections?.[s] || '')}" placeholder="沒填就發到公告頻道"></label>`).join('')}
         <button class="btn">儲存通知設定</button>
-      </form><p class="small muted">Webhook 在 Discord 頻道設定 → 整合 → Webhook 建立。這些網址只有管理員看得到。</p></section>
+      </form><p class="small muted">Webhook 在 Discord 頻道設定 → 整合 → Webhook 建立。身分組 ID：Discord 開啟「開發者模式」後，在伺服器設定 → 身分組，對絲竹身分組按右鍵 → 複製身分組 ID。這些網址只有管理員看得到。</p></section>
 
     <section class="card"><h2>Google 行事曆</h2>
       <p class="small muted">第一次設定好 Google 服務帳戶後，按「建立／檢查行事曆」，系統會建立 ${state.calendars.length} 本共用行事曆。之後新增的行程會自動同步。</p>

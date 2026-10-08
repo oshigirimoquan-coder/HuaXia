@@ -322,6 +322,24 @@ tr.inactive { opacity: .5; }
 .ann-mini li a { color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ann-mini li.unread a { font-weight: 700; }
 
+/* 標記 */
+.ann-head:has(> .btn:only-child) { position: absolute; right: 18px; top: 14px; }
+.mentions { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: 14px; }
+.at { color: var(--accent); font-weight: 500; }
+.at.me { background: var(--soft); padding: 0 6px; border-radius: 3px; }
+.ann.tagged { background: color-mix(in srgb, var(--soft) 55%, transparent); }
+.person.me { font-weight: 700; color: var(--accent); }
+.tags.people { gap: 6px 16px; }
+.tag-box { display: grid; gap: 2px; border: 1px solid var(--accent); border-radius: var(--r); background: var(--surface); padding: 12px 18px; margin-bottom: 16px; }
+.tag-box > b { font: 700 15px var(--f-kai); letter-spacing: .12em; color: var(--accent); margin-bottom: 4px; }
+.tag-box a { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; color: var(--ink); border-top: 1px solid var(--line); }
+.tag-box a:hover { text-decoration: none; color: var(--accent); }
+.tag-box .k { font: 700 13px var(--f-kai); color: var(--accent); letter-spacing: .1em; flex: none; }
+.tag-box .muted { margin-left: auto; flex: none; }
+.more-g a { position: relative; }
+.more-g .badge { position: absolute; top: 4px; right: 10px; margin: 0; }
+#more-btn .badge { position: absolute; top: -2px; left: 58%; margin: 0; }
+
 /* 音樂會分享 */
 .ann.concert { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 16px; }
 .ann.concert .ev-date { padding-top: 4px; }

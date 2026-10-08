@@ -254,6 +254,17 @@ alter table public.announcements add column if not exists event_at timestamptz; 
 alter table public.announcements add column if not exists venue text not null default '';
 alter table public.announcements add column if not exists link text not null default '';
 
+-- 標記：mentions 指定的人；mention_all = 標記全體絲竹成員
+alter table public.announcements add column if not exists mentions uuid[] not null default '{}';
+alter table public.announcements add column if not exists mention_all boolean not null default false;
+
+-- 小樂團名單（目前只有絲竹，之後可加校友團等）
+create table if not exists public.ensemble_members (
+  ensemble text not null check (ensemble in ('sizhu')),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  primary key (ensemble, user_id)
+);
+
 create table if not exists public.announcement_reads (
   ann_id uuid references public.announcements(id) on delete cascade,
   user_id uuid default auth.uid() references public.profiles(id) on delete cascade,
@@ -507,6 +518,24 @@ begin
     order by e.starts_at;
 end $$;
 
+-- 提到我的訊息：被點名，或被標記全體而且我在那個樂團名單裡
+create or replace function public.my_mentions()
+returns setof public.announcements
+language sql stable security definer set search_path = public as $$
+  select a.* from announcements a
+  where public.is_insider() and (auth.uid() = any(a.mentions)
+    or (a.mention_all and exists (select 1 from ensemble_members m where m.ensemble = a.channel and m.user_id = auth.uid())))
+  order by a.created_at desc limit 50
+$$;
+
+-- 使用者 → Discord ID（給後端通知 @ 人用；一般登入者不能呼叫）
+create or replace function public.discord_ids(uids uuid[])
+returns table (user_id uuid, discord_id text)
+language sql stable security definer set search_path = public, auth as $$
+  select i.user_id, i.provider_id from auth.identities i where i.provider = 'discord' and i.user_id = any(uids)
+$$;
+revoke execute on function public.discord_ids(uuid[]) from public, anon, authenticated;
+
 -- 練習回報可見範圍
 create or replace function public.can_see_report(rid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -585,7 +614,7 @@ do $$ declare t text; p record; begin
   foreach t in array array['profiles','profile_private','user_roles','semesters','settings','private_settings',
     'calendars','pieces','piece_parts','ringers','part_assignments','scores','classes','class_students',
     'class_milestones','class_progress','events','event_pieces','leave_requests','attendance',
-    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback','applications'] loop
+    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback','applications','ensemble_members'] loop
     execute format('alter table public.%I enable row level security', t);
     for p in select policyname from pg_policies where schemaname = 'public' and tablename = t loop
       execute format('drop policy %I on public.%I', p.policyname, t);
@@ -670,6 +699,10 @@ create policy ann_read on public.announcements for select using (
     when 'ringers' then public.has_role('ringer')
     else false end);
 create policy ann_write on public.announcements for all using (public.is_officer()) with check (public.is_officer());
+-- 樂團名單：社內成員看得到，幹部維護
+create policy ens_read on public.ensemble_members for select using (public.is_insider());
+create policy ens_write on public.ensemble_members for all using (public.is_officer()) with check (public.is_officer());
+
 -- 音樂會分享：社內成員都能發，只能改或刪自己的
 create policy ann_share_insert on public.announcements for insert with check (
   channel = 'concerts' and public.is_insider() and author = auth.uid() and audience = 'insiders' and not pinned);

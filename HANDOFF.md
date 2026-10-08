@@ -26,6 +26,9 @@
 - 通知依頻道送到對應 DC webhook（設定頁可填，沒填就送公告頻道）。
 - 驗證：`npm test` 28/28；桌機 1280／960、手機 375 截圖無橫向捲動與 JS 錯誤。
 
+- 絲竹名單（`ensemble_members`）＋公告標記（`mentions`、`mention_all`）；`my_mentions()` 給首頁「有人提到你」與絲竹紅點；
+  `discord_ids()` 只給後端（已 revoke），notify 用它 @ 人；@全體絲竹 用設定頁的 DC 身分組 ID。`npm test` 31/31。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。

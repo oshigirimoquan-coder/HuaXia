@@ -22,7 +22,7 @@ function untilText(iso) {
 route('/', async () => {
   const p = state.p;
   const nowIso = new Date(Date.now() - 2 * 3600e3).toISOString();
-  const [evs, leaves, anns, reads, tasks, stats, pending] = await Promise.all([
+  const [evs, leaves, anns, reads, tasks, stats, pending, tags] = await Promise.all([
     sb.from('events').select('*').gte('starts_at', nowIso).order('starts_at').limit(8),
     sb.from('leave_requests').select('*').eq('user_id', me()),
     sb.from('announcements').select('*').eq('channel', 'main').order('created_at', { ascending: false }).limit(20),
@@ -30,6 +30,7 @@ route('/', async () => {
     sb.from('tasks').select('*').neq('status', 'done').order('due', { ascending: true }),
     state.semester ? sb.rpc('attendance_stats', { sem: state.semester.id }) : { data: [] },
     p.admin ? sb.from('profiles').select('id').eq('status', 'pending') : { data: [] },
+    p.insider ? sb.rpc('my_mentions') : { data: [] },
   ]);
   const lv = new Map((leaves.data || []).map((l) => [l.event_id, l]));
   const read = new Set((reads.data || []).map((r) => r.ann_id));
@@ -62,7 +63,9 @@ route('/', async () => {
       <div class="next-m">${p.officer ? '<a class="btn line" href="#/events">新增行程</a>' : '<span>幹部排好練習後會顯示在這裡。</span>'}</div></div></section>`;
   }
 
-  return (p.admin && pending.data?.length ? `<a class="banner" href="#/members"><b>${pending.data.length} 人等待核准加入</b><span>前往審核 →</span></a>` : '') +
+  const newTags = (tags.data || []).filter((a) => !read.has(a.id)).slice(0, 3);
+  const tagBox = newTags.length ? `<section class="tag-box"><b>有人提到你</b>${newTags.map((a) => `<a href="#/${a.channel === 'main' ? 'announcements' : a.channel}"><span class="k">${a.channel === 'sizhu' ? '絲竹' : '公告'}</span>${esc(a.title)}<span class="muted small">${fmtDate(a.created_at)}</span></a>`).join('')}</section>` : '';
+  return tagBox + (p.admin && pending.data?.length ? `<a class="banner" href="#/members"><b>${pending.data.length} 人等待核准加入</b><span>前往審核 →</span></a>` : '') +
     (p.admin && !state.semester ? `<a class="banner" href="#/settings"><b>還沒有設定目前學期</b><span>先建立學期，才能新增行程 →</span></a>` : '') +
     (latest ? `<a class="ann-top" href="#/announcements"><span class="k ${latest.type === 'urgent' ? 'urgent' : ''}">${latest.pinned ? '置頂公告' : '最新公告'}</span>
       <h2>${esc(latest.title)}</h2>${latest.body ? `<p>${esc(latest.body)}</p>` : `<p>${fmtDate(latest.created_at)}・${ANN_TYPE[latest.type]}</p>`}<span class="go">全部公告 →</span></a>` : '') +

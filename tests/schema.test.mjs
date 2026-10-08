@@ -24,15 +24,19 @@ before(async () => {
   await db.exec(`
     create schema auth; create schema storage;
     create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}');
+    create table auth.identities (user_id uuid, provider text, provider_id text);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true),'')::uuid $$;
     create table storage.buckets (id text primary key, name text, public boolean);
     create table storage.objects (id uuid default gen_random_uuid(), bucket_id text, name text);
-    create role authenticated; create role anon;`);
+    create role authenticated; create role anon;
+    grant usage on schema public, auth, storage to authenticated, anon;
+    alter default privileges in schema public grant all on tables to authenticated, anon;
+    alter default privileges in schema public grant execute on functions to authenticated, anon;
+    grant all on all tables in schema storage to authenticated, anon;
+    grant execute on function auth.uid() to authenticated, anon;`);
   const sql = fs.readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8').replace(/create extension[^;]+;/, '');
   await db.exec(sql);
   await db.exec(sql); // 可以重複執行
-  await db.exec(`grant usage on schema public, auth, storage to authenticated, anon; grant all on all tables in schema public, storage to authenticated, anon;
-    grant execute on all functions in schema public, auth to authenticated, anon;`);
   await db.exec(`insert into auth.users values ('${A}','a@x','{"full_name":"社長"}'),('${B}','b@x','{"name":"阿B"}'),('${R}','r@x','{}')`);
   await as(A, `update profiles set status='active', section='拉弦' where id='${B}'; insert into user_roles values ('${B}','member');
     update profiles set status='active' where id='${R}'; insert into user_roles values ('${R}','ringer');
@@ -157,6 +161,24 @@ test('頻道：槍手看不到絲竹與校友團', async () => {
   await as(A, `insert into announcements (channel,title) values ('alumni','校友團年度聚會')`);
   assert.equal((await as(R, `select 1 from announcements where channel in ('sizhu','alumni')`)).rows.length, 0);
   assert.equal((await as(B, `select 1 from announcements where channel in ('sizhu','alumni')`)).rows.length, 2);
+});
+
+test('絲竹名單：幹部可以加人，社員只能看', async () => {
+  assert.equal((await as(A, `insert into ensemble_members (ensemble,user_id) values ('sizhu','${B}')`)).error, undefined);
+  assert.match((await as(B, `insert into ensemble_members (ensemble,user_id) values ('sizhu','${A}')`)).error, /row-level security/);
+  assert.equal((await as(B, `select user_id from ensemble_members where ensemble='sizhu'`)).rows.length, 1);
+});
+
+test('絲竹標記：公告可以標記人，被標記的人查得到提到自己的訊息', async () => {
+  await as(A, `insert into announcements (channel,title,mentions) values ('sizhu','B 段請練熟',array['${B}']::uuid[])`);
+  await as(A, `insert into announcements (channel,title,mention_all) values ('sizhu','週四全員到',true)`);
+  const { rows } = await as(B, `select title from my_mentions() order by title`);
+  assert.deepEqual(rows.map((r) => r.title).sort(), ['B 段請練熟', '週四全員到'].sort());
+  assert.equal((await as(R, `select 1 from my_mentions()`)).rows.length, 0);
+});
+
+test('Discord ID 對照只有後端能查，一般登入者不能呼叫', async () => {
+  assert.match((await as(B, `select * from discord_ids(array['${B}']::uuid[])`)).error, /permission denied/);
 });
 
 test('別人看不到我的手機與信箱', async () => {

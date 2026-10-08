@@ -36,7 +36,18 @@ Deno.serve(async (req) => {
       if (channel === "discord" || channel === "both") {
         if (a.audience === "ringers") {
           // 槍手不在社團 DC，等 Email 管道決定後再寄
-        } else if (await discord(url, text)) sent.push("discord");
+        } else {
+          // 標記：被點名的人用 Discord ID @；全體絲竹成員用設定頁填的 DC 身分組 @
+          const users: string[] = [], roles: string[] = [];
+          if (a.mentions?.length) {
+            const { data: ids } = await db.rpc("discord_ids", { uids: a.mentions });
+            for (const r of ids ?? []) users.push(r.discord_id);
+          }
+          const role = hooks.roles?.[a.channel];
+          if (a.mention_all && role) roles.push(role);
+          const ping = [...roles.map((r) => `<@&${r}>`), ...users.map((u) => `<@${u}>`)].join(" ");
+          if (await discord(url, ping ? `${ping}\n${text}` : text, { users, roles })) sent.push("discord");
+        }
       }
       if (channel === "email" || channel === "both") {
         // TODO：社長決定使用 Gmail 後，在這裡接上寄信（Gmail API 或 SMTP 服務）
