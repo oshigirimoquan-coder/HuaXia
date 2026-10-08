@@ -262,3 +262,16 @@ test('工具連結：已預設一筆，社員看得到但不能改', async () =>
   await as(B, `update settings set value='[]' where key='tools'`);
   assert.equal((await as(A, `select jsonb_array_length(value) n from settings where key='tools'`)).rows[0].n, 1);
 });
+
+test('排人：組長可以排自己組的聲部，不能排別組；座位表組長可以存', async () => {
+  const L = '00000000-0000-0000-0000-0000000000b2';
+  await db.exec(`insert into auth.users values ('${L}','l@x','{}')`);
+  await as(A, `update profiles set status='active', section='拉弦' where id='${L}'; insert into user_roles values ('${L}','member'),('${L}','leader');
+    insert into piece_parts (id,piece_id,name) values ('33333333-3333-3333-3333-333333333339','${P1}','梆笛')`);
+  assert.equal((await as(L, `insert into part_assignments (part_id,user_id) values ('${PT1}','${L}')`)).error, undefined);           // 二胡I（拉弦）
+  assert.ok((await as(L, `insert into part_assignments (part_id,user_id) values ('33333333-3333-3333-3333-333333333339','${L}')`)).error); // 梆笛（吹管）
+  assert.ok((await as(B, `insert into part_assignments (part_id,user_id) values ('${PT2}','${B}')`)).error);                         // 一般社員不行
+  assert.equal((await as(L, `insert into seating_charts (piece_id, seats) values ('${P1}', '[]')`)).error, undefined);
+  assert.ok((await as(B, `update seating_charts set seats='[1]' where piece_id='${P1}' returning piece_id`)).rows.length === 0);
+  assert.equal((await as(B, `select piece_id from seating_charts`)).rows.length, 1);
+});

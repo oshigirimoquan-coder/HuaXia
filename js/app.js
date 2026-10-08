@@ -12,6 +12,7 @@ import './views/members.js';
 import './views/settings.js';
 import './views/me.js';
 import './views/tools.js';
+import './views/seating.js';
 import { joinScreen } from './views/recruit.js';
 import { SHARE_CATS } from './views/announcements.js';
 

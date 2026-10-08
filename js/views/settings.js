@@ -5,7 +5,7 @@ import { invokeFn } from './events.js';
 const CH_LABEL = { performance: '華夏演出', tutti: '大團', sizhu: '絲竹', class: '教學班', alumni: '校友團', concerts: '音樂會', resources: '資源' };
 // 備份：所有資料表（不含 Discord webhook 等私密設定）
 const BACKUP_TABLES = ['profiles', 'profile_private', 'user_roles', 'semesters', 'settings', 'calendars', 'pieces', 'piece_parts',
-  'ringers', 'part_assignments', 'scores', 'classes', 'class_students', 'class_milestones', 'class_progress', 'events', 'event_pieces',
+  'ringers', 'part_assignments', 'scores', 'seating_charts', 'classes', 'class_students', 'class_milestones', 'class_progress', 'events', 'event_pieces',
   'leave_requests', 'attendance', 'announcements', 'tasks', 'resources', 'practice_reports', 'report_feedback', 'applications', 'ensemble_members'];
 async function fetchAll(t) {
   const out = [];

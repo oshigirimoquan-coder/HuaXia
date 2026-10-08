@@ -1,5 +1,6 @@
 import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
-import { partShortage, SECTIONS, guessSection } from '../logic.js';
+import { partShortage, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES } from '../logic.js';
+import { seatSvg } from './seating.js';
 
 async function loadAll(pieceId = null) {
   let pq = sb.from('pieces').select('*').order('title');
@@ -166,7 +167,16 @@ route('/pieces/:id', async ({ id }) => {
   const pc = pieces[0];
   if (!pc) return empty('找不到這首曲目', '可能已刪除，或你沒有參與這首曲目。', '<a class="btn" href="#/pieces">回曲目</a>');
   const pts = parts.filter((x) => x.piece_id === id);
-  const { data: scores } = await sb.from('scores').select('*').eq('piece_id', id).order('created_at');
+  const [{ data: scores }, { data: chart }] = await Promise.all([
+    sb.from('scores').select('*').eq('piece_id', id).order('created_at'),
+    sb.from('seating_charts').select('*').eq('piece_id', id).maybeSingle(),
+  ]);
+  // 排人：幹部全部；組長排自己組；小老師排自己帶的聲部（與資料庫 can_staff_part 一致）
+  const mySec = state.profile?.section;
+  const canStaff = (pt) => p.officer || pt.tutor_id === me() || (p.leader && mySec && (pt.section || guessSection(pt.name)) === mySec);
+  const pieceAsg = asg.filter((a) => pts.some((x) => x.id === a.part_id));
+  const seatStage = { ...STAGES.hall, style: 'arc', ...(chart?.stage || {}) };
+  const seatList = chart?.seats?.length ? reconcileSeats(chart.seats, pts, pieceAsg).seats : autoSeat(pts, pieceAsg, seatStage);
   const mine = new Set(asg.filter((a) => a.user_id === me()).map((a) => a.part_id));
   setTimeout(() => {
     $('#edit-piece')?.addEventListener('click', () => editPiece(pc));
@@ -200,7 +210,10 @@ route('/pieces/:id', async ({ id }) => {
         <div class="part-who">${a.map((x) => who(x, ringers)).join('') || '<span class="muted small">尚未排人</span>'}</div>
         <div class="part-meta">${pt.tutor_id ? `<span class="small muted">小老師</span> ${chipPerson(pt.tutor_id)}` : ''}${pt.note ? `<span class="small muted">${esc(pt.note)}</span>` : ''}</div>
         <div class="part-scores">${scoreLinks(pt.id)}</div>
-        ${p.officer ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button><button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button><button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button></div>` : ''}
+        ${p.officer ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button><button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button><button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button></div>` : canStaff(pt) ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button></div>` : ''}
       </div>`; }).join('')}</div>` : '<p class="muted">還沒有設定聲部。</p>'}
-     ${!p.staff ? '<p class="small muted">分譜只顯示你負責的聲部。</p>' : ''}</section>`;
+     ${!p.staff ? '<p class="small muted">分譜只顯示你負責的聲部。</p>' : ''}</section>` +
+    (pieceAsg.length ? `<section class="card"><div class="card-head"><h2>座位表</h2><a class="btn sm ${p.officer || p.leader ? 'pri' : ''}" href="#/pieces/${id}/seating">${p.officer || p.leader ? '調整座位表' : '查看'}</a></div>
+      <p class="small muted">${chart ? '已排好座位，' : '還沒儲存過，下面是依編制自動排的版本，'}${p.officer || p.leader ? '點「調整座位表」可以拖曳微調、換舞台大小。' : '幹部或組長會再微調。'}</p>
+      <a class="seat-preview" href="#/pieces/${id}/seating">${seatSvg({ stage: seatStage, seats: seatList, parts: pts, ringers, compact: true })}</a></section>` : '');
 });

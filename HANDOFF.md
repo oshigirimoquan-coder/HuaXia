@@ -61,3 +61,7 @@
 - 樂譜可依「組別」發（scores.section）：批次上傳依檔名猜組（js/logic.js `guessSection`，DB 端 `guess_section` 規則一致），組員看自己那組；槍手看排到的曲子裡同組的譜（piece_parts.section 依名稱自動填）。
 - 讀譜權限統一在 `can_read_score()`，表格與 Storage 共用。
 - 「工具」頁（#/tools）：settings.tools 清單，外部連結開新分頁，管理員可編輯。
+
+## 2026-10-08 座位表、組長排人
+- 座位表（#/pieces/:id/seating，表 seating_charts，每首一份）：`autoSeat()` 依編制排（拉弦左前、彈撥右前、低音接彈撥後、吹管後排、打擊最後），舞台預設 教室/演講廳/音樂廳/自訂，弧形或直排；拖曳微調、列印。`reconcileSeats()` 讓編制變動後保留舊位置。
+- 排人權限 `can_staff_part()`：幹部全部、組長自己組、小老師自己帶的聲部。組長看不到槍手名單，槍手仍由幹部排。

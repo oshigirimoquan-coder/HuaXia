@@ -186,6 +186,15 @@ create trigger piece_parts_section before insert or update on public.piece_parts
   for each row execute function public.piece_parts_section();
 update public.piece_parts set section = public.guess_section(name) where section is null;
 
+-- 座位表：每首曲子一份；seats = [{k:'u:<id>'|'r:<id>', part:<part id>, x, y}]（公尺，舞台前緣中央為 0,0）
+create table if not exists public.seating_charts (
+  piece_id uuid primary key references public.pieces(id) on delete cascade,
+  stage jsonb not null default '{"preset":"hall","w":12,"d":8}',
+  seats jsonb not null default '[]',
+  updated_by uuid default auth.uid() references public.profiles(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------
 -- 5. 教學班
 -- ---------------------------------------------------------------------
@@ -686,6 +695,8 @@ create or replace function public.touch_updated() returns trigger language plpgs
 begin new.updated_at := now(); return new; end $$;
 drop trigger if exists events_touch on public.events;
 create trigger events_touch before update on public.events for each row execute function public.touch_updated();
+drop trigger if exists seating_touch on public.seating_charts;
+create trigger seating_touch before update on public.seating_charts for each row execute function public.touch_updated();
 
 -- =====================================================================
 -- 存取規則 (RLS)
@@ -694,7 +705,7 @@ do $$ declare t text; p record; begin
   foreach t in array array['profiles','profile_private','user_roles','semesters','settings','private_settings',
     'calendars','pieces','piece_parts','ringers','part_assignments','scores','classes','class_students',
     'class_milestones','class_progress','events','event_pieces','leave_requests','attendance',
-    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback','applications','ensemble_members'] loop
+    'announcements','announcement_reads','tasks','resources','practice_reports','report_feedback','applications','ensemble_members','seating_charts'] loop
     execute format('alter table public.%I enable row level security', t);
     for p in select policyname from pg_policies where schemaname = 'public' and tablename = t loop
       execute format('drop policy %I on public.%I', p.policyname, t);
@@ -720,13 +731,22 @@ create policy pset_admin on public.private_settings for all using (public.is_adm
 create policy cal_read on public.calendars for select using (public.is_active());
 create policy cal_admin on public.calendars for all using (public.is_admin()) with check (public.is_admin());
 
+create or replace function public.can_staff_part(pid uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_officer() or (public.is_active() and exists (select 1 from piece_parts pp where pp.id = pid and (
+    pp.tutor_id = auth.uid() or (public.has_role('leader') and pp.section is not null and pp.section = public.my_section()))))
+$$;
 -- 曲目與編制：社內成員看全部；槍手只看自己參與的曲目
 create policy piece_read on public.pieces for select using (public.is_insider() or public.in_piece(id));
 create policy piece_write on public.pieces for all using (public.is_officer()) with check (public.is_officer());
 create policy part_read on public.piece_parts for select using (public.is_insider() or public.in_piece(piece_id));
 create policy part_write on public.piece_parts for all using (public.is_officer()) with check (public.is_officer());
 create policy assign_read on public.part_assignments for select using (public.is_insider() or public.in_part(part_id));
-create policy assign_write on public.part_assignments for all using (public.is_officer()) with check (public.is_officer());
+-- 排人：幹部全部；組長排自己組的聲部；小老師排自己帶的聲部
+create policy assign_write on public.part_assignments for all using (public.can_staff_part(part_id)) with check (public.can_staff_part(part_id));
+-- 座位表：看得到曲子的人都看得到；幹部與組長可以調整
+create policy seat_read on public.seating_charts for select using (public.is_insider() or public.in_piece(piece_id));
+create policy seat_write on public.seating_charts for all using (public.is_officer() or public.has_role('leader')) with check (public.is_officer() or public.has_role('leader'));
 create policy ringer_officer on public.ringers for all using (public.is_officer()) with check (public.is_officer());
 create policy ringer_self on public.ringers for select using (user_id = auth.uid());
 

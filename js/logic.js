@@ -159,3 +159,85 @@ export function guessSection(name, pieceTitle = '') {
   }
   return null;
 }
+
+// ---------- 座位表 ----------
+// 座標單位：公尺；舞台前緣（靠觀眾）中央為 (0,0)，x 往右、y 往舞台深處
+export const STAGES = {
+  room: { label: '社課教室', w: 8, d: 6 },
+  hall: { label: '演講廳', w: 12, d: 8 },
+  concert: { label: '音樂廳', w: 16, d: 10 },
+  custom: { label: '自訂大小', w: 12, d: 8 },
+};
+export const SEAT_STYLES = { arc: '半圓弧形（標準）', rows: '直排（教室）' };
+const SEAT_GAP = 0.95, CONDUCTOR_Y = 1.0;
+const r2 = (n) => Math.round(n * 100) / 100;
+
+// 依編制產生座位：拉弦在左前、彈撥在右前（低音接在彈撥後面，落在右後方）、吹管在後排中央、打擊最後一排
+export function autoSeat(parts, asg, stage = {}) {
+  const w = stage.w || 12, d = stage.d || 8, style = stage.style || 'arc';
+  const L = [], R = [], B = [], P = [];
+  const sorted = [...parts].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+  for (const zone of [['拉弦', L], ['彈撥', R], ['低音', R], ['吹管', B], ['打擊', P], [null, B]]) {
+    for (const pt of sorted) {
+      const sec = pt.section || guessSection(pt.name);
+      const known = ['拉弦', '彈撥', '低音', '吹管', '打擊'].includes(sec);
+      if (zone[0] ? sec !== zone[0] : known) continue;
+      for (const a of asg.filter((x) => x.part_id === pt.id)) zone[1].push({ k: a.user_id ? 'u:' + a.user_id : 'r:' + a.ringer_id, part: pt.id });
+    }
+  }
+  const seats = [];
+  const put = (who, x, y) => seats.push({ ...who, x, y });
+  if (style === 'rows') {
+    const half = Math.max(1, Math.floor((w / 2 - 0.5) / SEAT_GAP));
+    let row = 0;
+    const fillHalf = (q, side) => { let i = 0, r = 0; while (i < q.length) { for (let c = 0; c < half && i < q.length; c++, i++) put(q[i], side * (w / 2 - 0.5 - c * SEAT_GAP), 1.6 + r * 1.0); r++; } return r; };
+    row = Math.max(fillHalf(L, -1), fillHalf(R, 1));
+    const full = (q) => { const per = Math.max(1, Math.floor((w - 1) / SEAT_GAP) + 1); for (let i = 0; i < q.length; i += per) { const n = Math.min(per, q.length - i); for (let c = 0; c < n; c++) put(q[i + c], (c - (n - 1) / 2) * SEAT_GAP, 1.6 + row * 1.0); row++; } };
+    full(B); full(P);
+  } else {
+    const rad = (deg) => (deg * Math.PI) / 180;
+    const R0 = 1.6, DR = 1.0, A0 = 12, A1 = 168;
+    const radius = (i) => R0 + i * DR;
+    const at = (r, deg) => [Math.cos(rad(deg)) * r, CONDUCTOR_Y + Math.sin(rad(deg)) * r];
+    // 半邊：從外側（A1 或 A0）往中央 90° 排
+    const fillHalf = (q, left) => {
+      let i = 0, row = 0;
+      while (i < q.length) {
+        const r = radius(row), step = (SEAT_GAP / r) * 180 / Math.PI;
+        for (let a = left ? A1 : A0; left ? a > 90 + step / 3 : a < 90 - step / 3; a += left ? -step : step) { if (i >= q.length) break; put(q[i++], ...at(r, a)); }
+        row++;
+      }
+      return row;
+    };
+    let row = Math.max(fillHalf(L, true), fillHalf(R, false));
+    let i = 0;
+    while (i < B.length) {
+      const r = radius(row), step = (SEAT_GAP / r) * 180 / Math.PI;
+      const per = Math.max(1, Math.floor((A1 - A0) / step) + 1), n = Math.min(per, B.length - i);
+      for (let c = 0; c < n; c++) put(B[i++], ...at(r, 90 + ((n - 1) / 2 - c) * step));
+      row++;
+    }
+    const backY = CONDUCTOR_Y + radius(row) - 0.3;
+    const per = Math.max(1, Math.floor((w - 1) / SEAT_GAP) + 1);
+    for (let j = 0; j < P.length; j += per) {
+      const n = Math.min(per, P.length - j);
+      for (let c = 0; c < n; c++) put(P[j + c], (c - (n - 1) / 2) * SEAT_GAP, backY + (j / per) * 1.0);
+    }
+  }
+  // 超出舞台就以指揮為中心等比縮小
+  const maxY = Math.max(CONDUCTOR_Y, ...seats.map((s) => s.y)), maxX = Math.max(0.1, ...seats.map((s) => Math.abs(s.x)));
+  const f = Math.min(1, (d - 0.5 - CONDUCTOR_Y) / Math.max(0.1, maxY - CONDUCTOR_Y), (w / 2 - 0.45) / maxX);
+  return seats.map((s) => ({ ...s, x: r2(s.x * f), y: r2(CONDUCTOR_Y + (s.y - CONDUCTOR_Y) * f) }));
+}
+export const conductorAt = () => ({ x: 0, y: r2(CONDUCTOR_Y - 0.55) });
+
+// 已存的座位表與目前編制對齊：還在編制的人保留位置；不在的移除；新加入的回傳在 missing
+export function reconcileSeats(saved, parts, asg) {
+  const partIds = new Set(parts.map((p) => p.id));
+  const cur = asg.filter((a) => partIds.has(a.part_id)).map((a) => ({ k: a.user_id ? 'u:' + a.user_id : 'r:' + a.ringer_id, part: a.part_id }));
+  const keyOf = (x) => x.k + '|' + x.part;
+  const have = new Map((saved || []).map((s) => [keyOf(s), s]));
+  const seats = cur.filter((c) => have.has(keyOf(c))).map((c) => have.get(keyOf(c)));
+  const missing = cur.filter((c) => !have.has(keyOf(c)));
+  return { seats, missing };
+}

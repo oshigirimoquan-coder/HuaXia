@@ -48,6 +48,7 @@ function fixtures() {
     semesters: [{ id: 's1', name: '114-1', starts_on: '2026-09-01', ends_on: '2027-01-31', is_current: true }],
     settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'last_backup_at', value: '2026-07-20T10:00:00Z' }, { key: 'notify', value: { channel: 'discord' } }, { key: 'tools', value: [{ name: '輔助工具', url: 'https://splendorous-piroshki-574d88.netlify.app/', desc: '' }] }],
     private_settings: [],
+    seating_charts: [],
     calendars: [['tutti', '華夏｜全團練習與演出', 'insiders', null], ['sec-bow', '華夏｜拉弦分部課', 'section', '拉弦'], ['sec-wind', '華夏｜吹管分部課', 'section', '吹管'], ['class', '華夏｜教學班', 'class', null], ['ringers', '華夏｜槍手行程', 'ringers', null], ['officers', '華夏｜幹部', 'officers', null]]
       .map(([key, name, audience, section], i) => ({ key, name, audience, section, gcal_id: `demo-${key}@group.calendar.google.com`, sort: i })),
     pieces, piece_parts: parts, part_assignments, events, event_pieces, attendance: att,
@@ -143,7 +144,15 @@ class Q {
   exec() {
     const T = (DB[this.t] ||= []);
     let rows;
-    if (this.op === 'insert' || this.op === 'upsert') {
+    if (this.op === 'upsert') {
+      // 依主鍵（key／piece_id／id）覆蓋，沒有就新增
+      rows = this.payload.map((r) => {
+        const pk = ['key', 'piece_id', 'id'].find((k) => r[k] != null);
+        const old = pk && T.find((x) => x[pk] === r[pk]);
+        if (old) return Object.assign(old, r);
+        const n = { id: r.id || crypto.randomUUID(), created_at: new Date().toISOString(), ...r }; T.push(n); return n;
+      });
+    } else if (this.op === 'insert') {
       rows = this.payload.map((r) => ({ id: r.id || crypto.randomUUID(), created_at: new Date().toISOString(), ...r }));
       T.push(...rows);
     } else if (this.op === 'update') {

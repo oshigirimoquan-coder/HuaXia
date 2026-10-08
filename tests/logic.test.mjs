@@ -125,3 +125,27 @@ test('批次上傳：依檔名猜組別', async () => {
   assert.equal(guessSection('鼓聲_琵琶.pdf', '鼓聲'), '彈撥');   // 曲名裡的字不算
   assert.equal(guessSection('鍵盤.pdf'), null);
 });
+
+test('座位表：依編制自動排位，拉弦在左、彈撥在右、打擊在最後，而且都在舞台內', async () => {
+  const { autoSeat, reconcileSeats } = await import('../js/logic.js');
+  const parts = [
+    { id: 'a', name: '二胡I', sort: 1 }, { id: 'b', name: '琵琶', sort: 2 }, { id: 'c', name: '梆笛', sort: 3 },
+    { id: 'd', name: '定音鼓', sort: 4 }, { id: 'e', name: '大提琴', sort: 5 }, { id: 'f', name: '鍵盤', sort: 6 },
+  ];
+  const asg = [];
+  for (const [p, n] of [['a', 6], ['b', 4], ['c', 3], ['d', 2], ['e', 2], ['f', 1]]) for (let i = 0; i < n; i++) asg.push({ part_id: p, user_id: p + i });
+  for (const style of ['arc', 'rows']) for (const st of [{ w: 8, d: 6 }, { w: 16, d: 10 }]) {
+    const s = autoSeat(parts, asg, { ...st, style });
+    assert.equal(s.length, 18);
+    const of = (p) => s.filter((x) => x.part === p);
+    assert.ok(of('a').every((x) => x.x < 0), `${style} 拉弦在左`);
+    assert.ok(of('b').every((x) => x.x > 0), `${style} 彈撥在右`);
+    assert.ok(Math.min(...of('d').map((x) => x.y)) >= Math.max(...of('a').map((x) => x.y)), `${style} 打擊在後`);
+    assert.ok(s.every((x) => Math.abs(x.x) <= st.w / 2 && x.y > 0 && x.y <= st.d), `${style} 在舞台內`);
+    assert.equal(new Set(s.map((x) => x.x + ',' + x.y)).size, 18, `${style} 沒有重疊`);
+  }
+  const s = autoSeat(parts, asg, { w: 12, d: 8 });
+  const r = reconcileSeats(s, parts, [...asg.filter((a) => a.user_id !== 'a0'), { part_id: 'a', user_id: 'new' }]);
+  assert.equal(r.seats.length, 17);
+  assert.deepEqual(r.missing, [{ k: 'u:new', part: 'a' }]);
+});
