@@ -2,7 +2,7 @@ import { sb, state, route, esc, run, toast, formDialog, pageHead, empty, render,
 import { SECTIONS, toCSV, backupDue, twParts, ROLE_LABEL } from '../logic.js';
 import { invokeFn } from './events.js';
 
-const CH_LABEL = { sizhu: '絲竹', concerts: '音樂會', alumni: '校友團' };
+const CH_LABEL = { performance: '華夏演出', tutti: '大團', sizhu: '絲竹', class: '教學班', alumni: '校友團', concerts: '音樂會', resources: '資源' };
 // 備份：所有資料表（不含 Discord webhook 等私密設定）
 const BACKUP_TABLES = ['profiles', 'profile_private', 'user_roles', 'semesters', 'settings', 'calendars', 'pieces', 'piece_parts',
   'ringers', 'part_assignments', 'scores', 'classes', 'class_students', 'class_milestones', 'class_progress', 'events', 'event_pieces',

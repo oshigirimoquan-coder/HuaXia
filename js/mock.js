@@ -53,13 +53,14 @@ function fixtures() {
     pieces, piece_parts: parts, part_assignments, events, event_pieces, attendance: att,
     leave_requests: [{ event_id: 'e3', user_id: uid(6), type: 'leave', reason: '期中考', created_at: at(-3, '10:00') }, { event_id: 'e6', user_id: uid(8), type: 'late', reason: '通識課 7 點下課，約 20 分鐘後到', created_at: at(0, '09:00') }],
     announcements: [
-      { id: 'n1', channel: 'main', type: 'performance', audience: 'all', section: null, title: '期末公演總彩時間確定', body: '總彩在視聽館，14:00 集合搬樂器。槍手也請準時到。', pinned: true, author: uid(1), created_at: at(-2, '21:00') },
-      { id: 'n2', channel: 'main', type: 'practice', audience: 'insiders', section: null, title: '下週二改在 621', body: '721 被借走，下週二大團改到 621。', pinned: false, author: uid(2), created_at: at(-1, '22:10') },
-      { id: 'n3', channel: 'main', type: 'class', audience: 'newbies', section: null, title: '二胡入門班第一次上課', body: '請先把琴帶來，學長姐會教調音。', pinned: false, author: uid(1), created_at: at(-5, '20:00') },
+      { id: 'n1', channel: 'performance', type: 'performance', audience: 'all', section: null, title: '期末公演總彩時間確定', body: '總彩在視聽館，14:00 集合搬樂器。槍手也請準時到。', pinned: true, author: uid(1), created_at: at(-2, '21:00') },
+      { id: 'n2', channel: 'tutti', type: 'practice', audience: 'insiders', section: null, title: '下週二改在 621', body: '721 被借走，下週二大團改到 621。', pinned: false, author: uid(2), created_at: at(-1, '22:10') },
+      { id: 'n3', channel: 'class', type: 'class', audience: 'newbies', section: null, title: '二胡入門班第一次上課', body: '請先把琴帶來，學長姐會教調音。', pinned: false, author: uid(1), created_at: at(-5, '20:00') },
       { id: 'n4', channel: 'sizhu', type: 'other', audience: 'insiders', section: null, mentions: [ME, uid(8)], mention_all: false, title: '絲竹本週練〈留傘調〉B 段', body: '請先聽示範錄音，揚琴與笛子對一下前奏。', pinned: false, author: uid(2), created_at: at(-1, '20:00') },
       { id: 'n5', channel: 'concerts', type: 'other', audience: 'insiders', section: null, title: '臺北市立國樂團 春季音樂會', body: '學生票 5 折，想去的可以揪。', venue: '中山堂', link: 'https://example.com', event_at: at(9, '19:30'), pinned: false, author: uid(6), created_at: at(-2, '22:00') },
       { id: 'n6', channel: 'concerts', type: 'other', audience: 'insiders', section: null, title: '北藝大國樂系 學期音樂會', body: '', venue: '北藝大音樂廳', link: '', event_at: at(18, '19:00'), pinned: false, author: ME, created_at: at(-1, '09:00') },
       { id: 'n7', channel: 'alumni', type: 'other', audience: 'insiders', section: null, title: '校友團年度音樂會招募團員', body: '12 月底演出，歡迎畢業學長姐回來。', pinned: true, author: uid(1), created_at: at(-4, '12:00') },
+      { id: 'n8', channel: 'resources', type: 'other', audience: 'insiders', section: null, title: '二胡換把練習影片', body: '慢速示範，適合新生。', link: 'https://example.com', pinned: false, author: uid(9), created_at: at(-3, '21:00') },
     ],
     announcement_reads: [{ ann_id: 'n3', user_id: ME }],
     tasks: [
@@ -127,7 +128,7 @@ class Q {
   lte(k, v) { this.f.push((r) => r[k] <= v); return this; }
   lt(k, v) { this.f.push((r) => r[k] < v); return this; }
   contains(k, v) { this.f.push((r) => v.every((x) => (r[k] || [r.kind]).includes(x))); return this; }
-  not(k, op, v) { this.f.push((r) => r[k] !== v && r[k] !== undefined); return this; }
+  not(k, op, v) { if (op === 'in') { const l = String(v).replace(/[()]/g, '').split(','); this.f.push((r) => !l.includes(r[k])); } else this.f.push((r) => r[k] !== v && r[k] !== undefined); return this; }
   order(k, o = {}) { this.ord = [k, o.ascending !== false]; return this; }
   limit(n) { this.lim = n; return this; }
   range(a, b) { this.off = a; this.lim = b - a + 1; return this; }

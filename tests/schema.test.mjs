@@ -205,6 +205,26 @@ test('絲竹排練沒指定曲目時，只有絲竹名單上的人算應出席',
   assert.equal(ok[A], false);  // 不在
 });
 
+test('公告分類：社員可以分享「資源」，但不能發大團、華夏演出', async () => {
+  assert.equal((await as(B, `insert into announcements (channel,title,link) values ('resources','二胡換把教學','https://x')`)).error, undefined);
+  for (const ch of ['tutti', 'performance']) {
+    assert.match((await as(B, `insert into announcements (channel,title) values ('${ch}','x')`)).error, /row-level security/, ch);
+  }
+});
+
+test('公告分類：舊版的「公告」自動轉成新分類（演出→華夏演出、教學班→教學班、其他→大團）', async () => {
+  const r = await as(A, `insert into announcements (channel,type,title) values ('main','performance','舊演出'),('main','class','舊教學'),('main','practice','舊練習') returning title, channel`);
+  const m = Object.fromEntries(r.rows.map((x) => [x.title, x.channel]));
+  assert.deepEqual(m, { 舊演出: 'performance', 舊教學: 'class', 舊練習: 'tutti' });
+});
+
+test('對象選「絲竹」：大家都看得到，絲竹成員會被提醒', async () => {
+  await as(A, `insert into announcements (channel,audience,title) values ('sizhu','sizhu','對象絲竹的公告')`);
+  assert.equal((await as(B, `select 1 from my_mentions() where title='對象絲竹的公告'`)).rows.length, 1);  // B 在絲竹名單
+  assert.equal((await as(B, `select 1 from announcements where title='對象絲竹的公告'`)).rows.length, 1);
+  assert.equal((await as(R, `select 1 from announcements where title='對象絲竹的公告'`)).rows.length, 0); // 槍手看不到
+});
+
 test('Discord ID 對照只有後端能查，一般登入者不能呼叫', async () => {
   assert.match((await as(B, `select * from discord_ids(array['${B}']::uuid[])`)).error, /permission denied/);
 });

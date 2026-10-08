@@ -271,6 +271,29 @@ alter table public.announcements add column if not exists link text not null def
 alter table public.announcements add column if not exists mentions uuid[] not null default '{}';
 alter table public.announcements add column if not exists mention_all boolean not null default false;
 
+-- 2026-10 公告分類改版：channel 就是分類
+--   performance 華夏演出｜tutti 大團｜sizhu 絲竹｜class 教學班｜alumni 校友團｜concerts 音樂會｜resources 資源
+--   舊的 main 依 type 自動轉換；對象多一個 sizhu（大家看得到，提醒絲竹成員）
+alter table public.announcements drop constraint if exists announcements_channel_check;
+alter table public.announcements add constraint announcements_channel_check
+  check (channel in ('main','performance','tutti','sizhu','class','alumni','concerts','resources'));
+alter table public.announcements alter column channel set default 'tutti';
+alter table public.announcements drop constraint if exists announcements_audience_check;
+alter table public.announcements add constraint announcements_audience_check
+  check (audience in ('all','insiders','section','officers','newbies','ringers','sizhu'));
+create or replace function public.announcements_category() returns trigger language plpgsql as $$
+begin
+  if new.channel = 'main' then
+    new.channel := case new.type when 'performance' then 'performance' when 'class' then 'class' else 'tutti' end;
+  end if;
+  if new.audience = 'sizhu' then new.mention_all := true; end if;
+  return new;
+end $$;
+drop trigger if exists announcements_category on public.announcements;
+create trigger announcements_category before insert or update on public.announcements
+  for each row execute function public.announcements_category();
+update public.announcements set channel = channel where channel = 'main';
+
 -- 小樂團名單（目前只有絲竹，之後可加校友團等）
 create table if not exists public.ensemble_members (
   ensemble text not null check (ensemble in ('sizhu')),
@@ -544,7 +567,7 @@ returns setof public.announcements
 language sql stable security definer set search_path = public as $$
   select a.* from announcements a
   where public.is_insider() and (auth.uid() = any(a.mentions)
-    or (a.mention_all and exists (select 1 from ensemble_members m where m.ensemble = a.channel and m.user_id = auth.uid())))
+    or (a.mention_all and exists (select 1 from ensemble_members m where m.ensemble = 'sizhu' and m.user_id = auth.uid())))
   order by a.created_at desc limit 50
 $$;
 
@@ -717,6 +740,7 @@ create policy ann_read on public.announcements for select using (
     when 'section' then public.is_insider() and section = public.my_section()
     when 'newbies' then public.has_role('newbie')
     when 'ringers' then public.has_role('ringer')
+    when 'sizhu' then public.is_insider()
     else false end);
 create policy ann_write on public.announcements for all using (public.is_officer()) with check (public.is_officer());
 -- 樂團名單：社內成員看得到，幹部維護
@@ -725,10 +749,10 @@ create policy ens_write on public.ensemble_members for all using (public.is_offi
 
 -- 音樂會分享：社內成員都能發，只能改或刪自己的
 create policy ann_share_insert on public.announcements for insert with check (
-  channel = 'concerts' and public.is_insider() and author = auth.uid() and audience = 'insiders' and not pinned);
-create policy ann_share_own on public.announcements for update using (channel = 'concerts' and author = auth.uid())
-  with check (channel = 'concerts' and author = auth.uid() and audience = 'insiders' and not pinned);
-create policy ann_share_del on public.announcements for delete using (channel = 'concerts' and author = auth.uid());
+  channel in ('concerts','resources') and public.is_insider() and author = auth.uid() and audience = 'insiders' and not pinned);
+create policy ann_share_own on public.announcements for update using (channel in ('concerts','resources') and author = auth.uid())
+  with check (channel in ('concerts','resources') and author = auth.uid() and audience = 'insiders' and not pinned);
+create policy ann_share_del on public.announcements for delete using (channel in ('concerts','resources') and author = auth.uid());
 create policy annr_own on public.announcement_reads for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- 任務：幹部事項社員看不到

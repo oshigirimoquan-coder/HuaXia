@@ -12,6 +12,7 @@ import './views/members.js';
 import './views/settings.js';
 import './views/me.js';
 import { joinScreen } from './views/recruit.js';
+import { SHARE_CATS } from './views/announcements.js';
 
 // group：電腦版依性質分段（中間有分隔線），手機版「更多」裡分組列出；mgr 收進「幹部」下拉選單
 const NAV = [
@@ -19,13 +20,9 @@ const NAV = [
   { path: '/events', label: '行程', main: true, group: '練習' },
   { path: '/pieces', label: '曲目', main: true, group: '練習' },
   { path: '/attendance', label: '出席', group: '練習', show: (p) => !p.ringerOnly },
-  { path: '/teaching', label: '教學', group: '練習', show: (p) => p.insider },
   { path: '/announcements', label: '公告', main: true, badge: 'main', group: '社團' },
-  { path: '/tasks', label: '任務', group: '社團', show: (p) => !p.ringerOnly },
   { path: '/members', label: '成員', group: '社團', show: (p) => p.insider },
-  { path: '/sizhu', label: '絲竹', badge: 'tag', group: '交流', show: (p) => p.insider },
-  { path: '/concerts', label: '音樂會', group: '交流', show: (p) => p.insider },
-  { path: '/alumni', label: '校友團', group: '交流', show: (p) => p.insider },
+  { path: '/teaching', label: '教學班', group: '幹部', mgr: true, show: (p) => p.canTeach },
   { path: '/ringers', label: '槍手', group: '幹部', mgr: true, show: (p) => p.officer },
   { path: '/recruit', label: '招生', group: '幹部', mgr: true, show: (p) => p.officer },
   { path: '/settings', label: '設定', group: '幹部', mgr: true, show: (p) => p.admin },
@@ -66,7 +63,7 @@ function shell() {
     <main id="main" tabindex="-1"></main>
     <nav class="bottom" aria-label="主選單">
       ${items.filter((n) => n.main).map((n) => `<a href="#${n.path}" data-nav="${n.path}"><i class="dot"></i>${n.label}${n.badge ? `<i class="badge" data-b="${n.badge}" hidden></i>` : ''}</a>`).join('')}
-      <button id="more-btn" aria-expanded="false" aria-controls="more"><i class="dot"></i>更多<i class="badge" data-b="tag" hidden></i></button>
+      <button id="more-btn" aria-expanded="false" aria-controls="more"><i class="dot"></i>更多</button>
     </nav>
     <div id="more" class="more" hidden><div class="more-sheet">${moreGroups(items.filter((n) => !n.main))}</div></div>
     ${DEMO ? '<div class="demo-flag">示範模式・資料為虛構</div>' : ''}`;
@@ -76,12 +73,11 @@ function shell() {
 }
 
 async function refreshUnread() {
-  const [{ data: anns }, { data: reads }, { data: tags }] = await Promise.all([
-    sb.from('announcements').select('id').eq('channel', 'main').limit(100), sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
-    state.p.insider ? sb.rpc('my_mentions') : { data: [] },
+  const [{ data: anns }, { data: reads }] = await Promise.all([
+    sb.from('announcements').select('id').not('channel', 'in', `(${SHARE_CATS.join(',')})`).limit(100), sb.from('announcement_reads').select('ann_id').eq('user_id', me()),
   ]);
   const r = new Set((reads || []).map((x) => x.ann_id));
-  const counts = { main: (anns || []).filter((a) => !r.has(a.id)).length, tag: (tags || []).filter((a) => !r.has(a.id)).length };
+  const counts = { main: (anns || []).filter((a) => !r.has(a.id)).length };
   $$('.badge').forEach((b) => { const n = counts[b.dataset.b] || 0; b.hidden = !n; b.textContent = n > 9 ? '9+' : n; });
 }
 

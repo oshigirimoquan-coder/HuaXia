@@ -24,14 +24,13 @@ Deno.serve(async (req) => {
     if (body.type === "announcement") {
       const { data: a } = await db.from("announcements").select("*").eq("id", body.id).single();
       if (!a) return json({ error: "找不到公告" }, 404);
-      const CH: Record<string, string> = { sizhu: "絲竹", concerts: "音樂會分享", alumni: "校友團" };
-      const url = a.channel && a.channel !== "main" ? (hooks.channels?.[a.channel] ?? hooks.announce)
-        : a.audience === "officers" ? hooks.officers
+      const CH: Record<string, string> = { performance: "華夏演出", tutti: "大團", sizhu: "絲竹", class: "教學班", alumni: "校友團", concerts: "音樂會分享", resources: "資源分享" };
+      const url = a.audience === "officers" ? hooks.officers
         : a.audience === "section" ? (hooks.sections?.[a.section] ?? hooks.announce)
-        : hooks.announce;
+        : (hooks.channels?.[a.channel] ?? hooks.announce);
       const head = a.type === "urgent" ? "🔴 **【緊急】**" : `**【${CH[a.channel] ?? TYPE[a.type] ?? "公告"}】**`;
-      const where = a.channel === "concerts" ? [a.event_at ? `🗓 ${twTime(a.event_at)}` : "", a.venue ? `📍 ${a.venue}` : "", a.link].filter(Boolean).join("　") : "";
-      const page = ({ sizhu: "sizhu", concerts: "concerts", alumni: "alumni" } as Record<string, string>)[a.channel] ?? "announcements";
+      const where = a.channel === "concerts" ? [a.event_at ? `🗓 ${twTime(a.event_at)}` : "", a.venue ? `📍 ${a.venue}` : "", a.link].filter(Boolean).join("　") : (a.link || "");
+      const page = "announcements";
       const text = `${head} ${a.title}${where ? `\n${where}` : ""}\n${a.body}${SITE ? `\n\n${SITE}#/${page}` : ""}`;
       if (channel === "discord" || channel === "both") {
         if (a.audience === "ringers") {
@@ -43,7 +42,7 @@ Deno.serve(async (req) => {
             const { data: ids } = await db.rpc("discord_ids", { uids: a.mentions });
             for (const r of ids ?? []) users.push(r.discord_id);
           }
-          const role = hooks.roles?.[a.channel];
+          const role = hooks.roles?.sizhu;
           if (a.mention_all && role) roles.push(role);
           const ping = [...roles.map((r) => `<@&${r}>`), ...users.map((u) => `<@${u}>`)].join(" ");
           if (await discord(url, ping ? `${ping}\n${text}` : text, { users, roles })) sent.push("discord");

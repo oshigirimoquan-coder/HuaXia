@@ -138,9 +138,6 @@ async function reportsTab() {
 }
 
 route('/teaching', async () => {
-  const tab = sessionStorage.getItem('teach') || 'classes';
-  setTimeout(() => $$('[data-teach]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('teach', b.dataset.teach); render(); })));
-  const body = tab === 'resources' ? await resourcesTab() : tab === 'reports' ? await reportsTab() : await classesTab();
-  return pageHead('教學', '新生教學班、各樂器教學資源，以及練習回報。') +
-    `<div class="seg">${Object.entries(TABS).map(([k, l]) => `<button data-teach="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>` + body;
+  // 教學資源改發在公告的「資源」分類；練習回報暫停使用（資料保留）
+  return pageHead('教學班', '新生教學班與進度。帶課的人在這裡勾選學員的進度。') + await classesTab();
 });

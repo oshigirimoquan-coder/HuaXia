@@ -92,7 +92,8 @@ export async function run(fn, ok) {
 
 // ---------- 表單對話框 ----------
 // fields: [{ name, label, type: text|textarea|date|time|number|select|checks|url|email|toggle, options, value, required, hint, full }]
-export function formDialog({ title, fields, submit = '儲存', danger = null }) {
+// only：['concerts',...] → 這個欄位只在 switchBy 欄位選到這些值時顯示；onChange(name, value, dialog) 讓頁面依選擇調整其他欄位
+export function formDialog({ title, fields, submit = '儲存', danger = null, switchBy = null, onChange = null }) {
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = 'dlg';
@@ -105,7 +106,7 @@ export function formDialog({ title, fields, submit = '儲存', danger = null }) 
       else if (f.type === 'checks') ctl = `<div class="checks">${f.options.map(([k, l]) => `<label class="check"><input type="checkbox" name="${f.name}" value="${esc(k)}" ${(v || []).includes(k) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('') || '<span class="muted">沒有可選的項目</span>'}</div>`;
       else if (f.type === 'toggle') ctl = `<label class="check"><input type="checkbox" id="${id}" name="${f.name}" ${v ? 'checked' : ''}><span>${esc(f.text || '')}</span></label>`;
       else ctl = `<input id="${id}" name="${f.name}" type="${f.type || 'text'}" value="${esc(v)}" ${req} ${f.min != null ? `min="${f.min}"` : ''} ${f.step ? `step="${f.step}"` : ''} placeholder="${esc(f.placeholder || '')}">`;
-      return `<div class="field ${f.full ? 'full' : ''}"><label for="${id}">${esc(f.label)}</label>${ctl}${f.hint ? `<small>${esc(f.hint)}</small>` : ''}</div>`;
+      return `<div class="field ${f.full ? 'full' : ''}" ${f.only ? `data-only="${f.only.join(' ')}"` : ''}><label for="${id}">${esc(f.label)}</label>${ctl}${f.hint ? `<small>${esc(f.hint)}</small>` : ''}</div>`;
     };
     d.innerHTML = `<form method="dialog" class="dlg-body">
       <header><h2>${esc(title)}</h2><button type="button" class="icon-btn" data-x aria-label="關閉">✕</button></header>
@@ -131,6 +132,13 @@ export function formDialog({ title, fields, submit = '儲存', danger = null }) 
       }
       close(out);
     });
+    const sync = () => {
+      if (!switchBy) return;
+      const cur = d.querySelector(`[name="${switchBy}"]`)?.value;
+      d.querySelectorAll('[data-only]').forEach((el) => { el.hidden = !el.dataset.only.split(' ').includes(cur); });
+    };
+    d.addEventListener('change', (e) => { if (e.target.name) onChange?.(e.target.name, e.target.value, d); sync(); });
+    sync();
     d.showModal();
     d.querySelector('input,textarea,select')?.focus();
   });

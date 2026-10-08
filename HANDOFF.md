@@ -39,6 +39,13 @@
 - `is_expected` 改成任一類型符合就算應出席；絲竹排練沒指定曲目時只算絲竹名單上的人（名單是空的就算全體）。
 - 前端 `kindsDefaults()`／`kindsLabel()`；通知、行事曆、每日提醒顯示「大團・絲竹」。`npm test` 38/38。
 
+## 2026-10-08 公告改版（社長手寫回饋）
+- 公告分類＝`announcements.channel`：performance 華夏演出｜tutti 大團｜sizhu 絲竹｜class 教學班｜alumni 校友團｜concerts 音樂會｜resources 資源。
+  舊的 main 由觸發器依 type 轉換；音樂會、資源開放社員分享（只能改刪自己的）。
+- 對象多 `sizhu`：大家看得到，自動 mention_all 提醒絲竹名單。
+- 選單：拿掉教學、任務、絲竹、音樂會、校友團；「教學班」進度移到幹部選單（canTeach）；任務與練習回報資料保留但不顯示。
+- `npm test` 41/41；桌機／手機截圖檢查公告頁、分類切換、發布對話框欄位切換。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。
