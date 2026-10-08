@@ -78,3 +78,19 @@ test('教學進度百分比', () => {
   assert.equal(progressPct(0, 0), 0);
   assert.equal(progressPct(2, 3), 67);
 });
+
+test('備份提醒：超過 60 天沒備份才提醒；從沒備份過時，學期開始 30 天後才提醒', async () => {
+  const { backupDue } = await import('../js/logic.js');
+  const now = new Date('2026-12-01T00:00:00Z');
+  assert.equal(backupDue('2026-11-01T00:00:00Z', '2026-09-01', now), false);
+  assert.equal(backupDue('2026-09-15T00:00:00Z', '2026-09-01', now), true);
+  assert.equal(backupDue(null, '2026-11-20', now), false);
+  assert.equal(backupDue(null, '2026-09-01', now), true);
+  assert.equal(backupDue(null, null, now), false);
+});
+
+test('CSV：有逗號、引號、換行的欄位會加引號，開頭有 BOM 讓 Excel 正確顯示中文', async () => {
+  const { toCSV } = await import('../js/logic.js');
+  const csv = toCSV([['姓名', '備註'], ['小華', '晚到, "家教"\n下次早點']]);
+  assert.equal(csv, '﻿姓名,備註\r\n小華,"晚到, ""家教""\n下次早點"');
+});

@@ -1,5 +1,5 @@
 import { sb, state, me, route, esc, pageHead, empty, nameOf, fmtDate, fmtTime } from '../core.js';
-import { ANN_TYPE, KIND_LABEL, LEAVE_LABEL, rateLevel, daysFromToday, twParts, twWeekday } from '../logic.js';
+import { ANN_TYPE, KIND_LABEL, LEAVE_LABEL, rateLevel, daysFromToday, twParts, twWeekday, backupDue } from '../logic.js';
 import { eventCard } from './events.js';
 import { taskRow, bindTasks } from './tasks.js';
 
@@ -67,6 +67,7 @@ route('/', async () => {
   const tagBox = newTags.length ? `<section class="tag-box"><b>有人提到你</b>${newTags.map((a) => `<a href="#/${a.channel === 'main' ? 'announcements' : a.channel}"><span class="k">${a.channel === 'sizhu' ? '絲竹' : '公告'}</span>${esc(a.title)}<span class="muted small">${fmtDate(a.created_at)}</span></a>`).join('')}</section>` : '';
   return tagBox + (p.admin && pending.data?.length ? `<a class="banner" href="#/members"><b>${pending.data.length} 人等待核准加入</b><span>前往審核 →</span></a>` : '') +
     (p.admin && !state.semester ? `<a class="banner" href="#/settings"><b>還沒有設定目前學期</b><span>先建立學期，才能新增行程 →</span></a>` : '') +
+    (p.admin && backupDue(state.settings.last_backup_at, state.semester?.starts_on) ? `<a class="banner" href="#/settings"><b>${state.settings.last_backup_at ? '超過 60 天沒有備份資料' : '這學期還沒備份過資料'}</b><span>到設定頁匯出備份 →</span></a>` : '') +
     (latest ? `<a class="ann-top" href="#/announcements"><span class="k ${latest.type === 'urgent' ? 'urgent' : ''}">${latest.pinned ? '置頂公告' : '最新公告'}</span>
       <h2>${esc(latest.title)}</h2>${latest.body ? `<p>${esc(latest.body)}</p>` : `<p>${fmtDate(latest.created_at)}・${ANN_TYPE[latest.type]}</p>`}<span class="go">全部公告 →</span></a>` : '') +
     hero +

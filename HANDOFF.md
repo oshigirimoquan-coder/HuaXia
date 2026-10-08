@@ -29,6 +29,11 @@
 - 絲竹名單（`ensemble_members`）＋公告標記（`mentions`、`mention_all`）；`my_mentions()` 給首頁「有人提到你」與絲竹紅點；
   `discord_ids()` 只給後端（已 revoke），notify 用它 @ 人；@全體絲竹 用設定頁的 DC 身分組 ID。`npm test` 31/31。
 
+## 2026-10-08 長期維護
+- `.github/workflows/keepalive.yml`：每 3 天連資料庫、登入服務、網站；失敗 GitHub 寄信。
+- 設定頁「匯出備份」：26 個表格 JSON＋出席率 CSV＋名冊 CSV（不含 private_settings）；`settings.last_backup_at`；`backupDue()` 控制首頁提醒。
+- `docs/MAINTENANCE.md`。`npm test` 33/33。
+
 ## 下一步
 1. 社長回覆 `docs/open-questions.md`。
 2. 使用者建立 GitHub repo，經同意後推送並開 Pages。

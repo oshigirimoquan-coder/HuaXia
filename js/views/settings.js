@@ -1,8 +1,46 @@
 import { sb, state, route, esc, run, toast, formDialog, pageHead, empty, render, $, $$, loadShared } from '../core.js';
-import { SECTIONS } from '../logic.js';
+import { SECTIONS, toCSV, backupDue, twParts, ROLE_LABEL } from '../logic.js';
 import { invokeFn } from './events.js';
 
 const CH_LABEL = { sizhu: '絲竹', concerts: '音樂會', alumni: '校友團' };
+// 備份：所有資料表（不含 Discord webhook 等私密設定）
+const BACKUP_TABLES = ['profiles', 'profile_private', 'user_roles', 'semesters', 'settings', 'calendars', 'pieces', 'piece_parts',
+  'ringers', 'part_assignments', 'scores', 'classes', 'class_students', 'class_milestones', 'class_progress', 'events', 'event_pieces',
+  'leave_requests', 'attendance', 'announcements', 'tasks', 'resources', 'practice_reports', 'report_feedback', 'applications', 'ensemble_members'];
+async function fetchAll(t) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from(t).select('*').range(from, from + 999);
+    if (error) throw new Error(`${t}：${error.message}`);
+    out.push(...(data || []));
+    if (!data || data.length < 1000) return out;
+  }
+}
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function backup(btn) {
+  btn.disabled = true; const old = btn.textContent; btn.textContent = '匯出中…';
+  try {
+    const data = {};
+    for (const t of BACKUP_TABLES) data[t] = await fetchAll(t);
+    const day = twParts(new Date()).date.replace(/-/g, '');
+    download(`華夏備份-${day}.json`, JSON.stringify({ exported_at: new Date().toISOString(), tables: data }), 'application/json');
+    const name = (id) => { const p = data.profiles.find((x) => x.id === id); return p ? (p.real_name || p.display_name) : ''; };
+    if (state.semester) {
+      const { data: st } = await sb.rpc('attendance_stats', { sem: state.semester.id });
+      download(`華夏出席率-${state.semester.name}-${day}.csv`, toCSV([['姓名', '組別', '目前出席率%', '整學期出席率%', '出席', '晚到', '早退', '請假', '缺席'],
+        ...(st || []).map((r) => [name(r.user_id), data.profiles.find((x) => x.id === r.user_id)?.section, r.current_rate, r.total_rate, r.present, r.late, r.early, r.excused, r.absent])]), 'text/csv');
+    }
+    download(`華夏名冊-${day}.csv`, toCSV([['姓名', '顯示名稱', '組別', '樂器', '身分組', '幹部職位', '狀態'],
+      ...data.profiles.map((p) => [p.real_name, p.display_name, p.section, p.instruments, data.user_roles.filter((r) => r.user_id === p.id).map((r) => ROLE_LABEL[r.role]), p.officer_title, { active: '啟用', pending: '待核准', inactive: '停用' }[p.status]])]), 'text/csv');
+    await sb.from('settings').upsert({ key: 'last_backup_at', value: new Date().toISOString() });
+    await loadShared(); toast('已下載備份，請存到雲端硬碟', 'ok'); render();
+  } catch (e) { toast('備份失敗：' + e.message, 'bad'); btn.disabled = false; btn.textContent = old; }
+}
+
 const setVal = (key, value) => run(() => sb.from('settings').upsert({ key, value }));
 
 route('/settings', async () => {
@@ -55,6 +93,7 @@ route('/settings', async () => {
       try { const r = await invokeFn('calendar-sync', { action: 'setup' }); toast(`已建立 ${r?.calendars?.length ?? ''} 本行事曆`, 'ok'); await loadShared(); render(); }
       catch (err) { toast('建立失敗：' + err.message, 'bad'); e.target.disabled = false; e.target.textContent = '建立／檢查行事曆'; }
     });
+    $('#backup')?.addEventListener('click', (e) => backup(e.currentTarget));
     $('#cal-acl')?.addEventListener('click', async () => {
       try { const r = await invokeFn('calendar-sync', { action: 'acl' }); toast(`幹部行事曆已分享給 ${r?.readers ?? 0} 個信箱`, 'ok'); }
       catch (err) { toast('同步失敗：' + err.message, 'bad'); }
@@ -95,6 +134,12 @@ route('/settings', async () => {
       <ul class="cal-admin">${state.calendars.map((c) => `<li><span>${esc(c.name)}</span>${c.gcal_id ? '<span class="chip ok">已建立</span>' : '<span class="chip">未建立</span>'}</li>`).join('')}</ul>
       <div class="actions"><button class="btn pri" id="cal-setup">建立／檢查行事曆</button><button class="btn" id="cal-acl">同步幹部行事曆權限</button></div>
       <p class="small muted">幹部行事曆只分享給幹部在「我的設定」填的 Google 信箱。調整幹部名單後會自動同步，也可以手動按上面的按鈕。</p></section>
+
+    <section class="card"><h2>資料備份</h2>
+      <p class="small">上次備份：${state.settings.last_backup_at ? `<b>${twParts(state.settings.last_backup_at).date}</b>（${Math.floor((Date.now() - new Date(state.settings.last_backup_at)) / 864e5)} 天前）` : '<b>還沒備份過</b>'}
+        ${backupDue(state.settings.last_backup_at, state.semester?.starts_on) ? '<span class="chip bad">該備份了</span>' : ''}</p>
+      <p class="small muted">會下載三個檔案：完整資料（.json，出事時可以還原）、出席率與名冊（.csv，Excel 打得開）。請存到社團的雲端硬碟。建議期中、期末各一次；超過 60 天沒備份，首頁會提醒管理員。Discord webhook 等私密設定不會包含在內。</p>
+      <button class="btn pri" id="backup">匯出備份</button></section>
 
     <section class="card"><h2>交接</h2>
       <p class="small">換屆時：新增學期並設為目前學期 → 到「成員」調整幹部與組長身分組 → 把「管理員」交給下一任 → 依 HANDOVER.md 轉移 GitHub、Supabase、Google、Discord 帳號。</p>

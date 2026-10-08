@@ -103,3 +103,20 @@ export function progressPct(doneCount, total) {
   if (!total) return 0;
   return Math.round((doneCount / total) * 100);
 }
+
+// 備份提醒：上次備份超過 60 天；從沒備份過的話，學期開始滿 30 天才提醒
+export function backupDue(lastIso, semesterStart, now = new Date()) {
+  const days = (d) => (now - new Date(d)) / 864e5;
+  if (lastIso) return days(lastIso) > 60;
+  if (!semesterStart) return false;
+  return days(semesterStart + 'T00:00:00+08:00') >= 30;
+}
+
+// 轉成 Excel 打得開的 CSV（開頭加 BOM，中文才不會亂碼）
+export function toCSV(rows) {
+  const cell = (v) => {
+    const s = v == null ? '' : Array.isArray(v) ? v.join('、') : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return '﻿' + rows.map((r) => r.map(cell).join(',')).join('\r\n');
+}

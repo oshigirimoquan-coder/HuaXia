@@ -46,7 +46,7 @@ function fixtures() {
     profiles, user_roles,
     profile_private: profiles.map((p, i) => ({ user_id: p.id, email: `member${i + 1}@example.com`, google_email: null, phone: '' })),
     semesters: [{ id: 's1', name: '114-1', starts_on: '2026-09-01', ends_on: '2027-01-31', is_current: true }],
-    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'notify', value: { channel: 'discord' } }],
+    settings: [{ key: 'team_name', value: '華夏國樂社' }, { key: 'attendance_rules', value: { late_weight: 1, early_weight: 1, unexcused_weight: 0.5, excused_mode: 'absent', count_ringers: false } }, { key: 'recruit_open', value: true }, { key: 'last_backup_at', value: '2026-07-20T10:00:00Z' }, { key: 'notify', value: { channel: 'discord' } }],
     private_settings: [],
     calendars: [['tutti', '華夏｜全團練習與演出', 'insiders', null], ['sec-bow', '華夏｜拉弦分部課', 'section', '拉弦'], ['sec-wind', '華夏｜吹管分部課', 'section', '吹管'], ['class', '華夏｜教學班', 'class', null], ['ringers', '華夏｜槍手行程', 'ringers', null], ['officers', '華夏｜幹部', 'officers', null]]
       .map(([key, name, audience, section], i) => ({ key, name, audience, section, gcal_id: `demo-${key}@group.calendar.google.com`, sort: i })),
@@ -129,6 +129,7 @@ class Q {
   not(k, op, v) { this.f.push((r) => r[k] !== v && r[k] !== undefined); return this; }
   order(k, o = {}) { this.ord = [k, o.ascending !== false]; return this; }
   limit(n) { this.lim = n; return this; }
+  range(a, b) { this.off = a; this.lim = b - a + 1; return this; }
   single() { this.one = 'single'; return this; }
   maybeSingle() { this.one = 'maybe'; return this; }
   insert(rows) { this.op = 'insert'; this.payload = [].concat(rows); return this; }
@@ -149,7 +150,7 @@ class Q {
     } else {
       rows = T.filter((r) => this.f.every((fn) => fn(r))).map((r) => embed(this.t, r, this.sel));
       if (this.ord) { const [k, asc] = this.ord; rows.sort((a, b) => ((a[k] ?? '') > (b[k] ?? '') ? 1 : -1) * (asc ? 1 : -1)); }
-      if (this.lim) rows = rows.slice(0, this.lim);
+      if (this.lim) rows = rows.slice(this.off || 0, (this.off || 0) + this.lim);
     }
     if (this.one) return { data: rows[0] ?? null, error: this.one === 'single' && !rows[0] ? { message: 'not found' } : null };
     return { data: rows, error: null };

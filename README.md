@@ -10,6 +10,7 @@
 |---|---|
 | `docs/SETUP.md` | 第一次上線的設定步驟 |
 | `docs/HANDOVER.md` | 帳號轉移與換屆交接 |
+| `docs/MAINTENANCE.md` | 長期維護：自動檢查、定期工作、出問題怎麼辦 |
 | `docs/open-questions.md` | 待社長決定的事項 |
 | `STATUS.md` / `HANDOFF.md` | 開發進度與交接紀錄 |
 
