@@ -28,6 +28,10 @@ const NAV = [
   { path: '/me', label: '我的設定', mobileOnly: true },
 ];
 
+// 電腦版收進「幹部」下拉選單的頁面，避免分頁太多時被擠到看不見
+const MGR = ['/ringers', '/recruit', '/settings'];
+document.addEventListener('click', (e) => { const d = document.querySelector('.mgr[open]'); if (d && (!d.contains(e.target) || e.target.closest('a'))) d.open = false; });
+
 // 標誌動畫每次開啟網站只播一次
 function firstVisit() {
   try { if (sessionStorage.getItem('hx-written')) return false; sessionStorage.setItem('hx-written', '1'); } catch { }
@@ -42,7 +46,8 @@ function shell() {
   $('#app').innerHTML = `
     <header class="top"><div class="top-in">
       <a class="brand" href="#/" aria-label="${esc(state.settings.team_name || '華夏國樂社')} 首頁">${mark(animate)}<span class="seal ${animate ? 'stamp-in' : ''}">華</span></a>
-      <nav class="tabs" aria-label="主選單">${items.filter((n) => !n.mobileOnly).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}${n.badge ? '<i class="badge" hidden></i>' : ''}</a>`).join('')}</nav>
+      <nav class="tabs" aria-label="主選單">${items.filter((n) => !n.mobileOnly && !MGR.includes(n.path)).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}${n.badge ? '<i class="badge" hidden></i>' : ''}</a>`).join('')}
+        ${items.some((n) => MGR.includes(n.path)) ? `<details class="mgr"><summary>幹部</summary><div class="mgr-menu">${items.filter((n) => MGR.includes(n.path)).map((n) => `<a href="#${n.path}" data-nav="${n.path}">${n.label}</a>`).join('')}</div></details>` : ''}</nav>
       <a class="me-link" href="#/me" data-nav="/me"><span>${esc(nameOf(me()))}</span>${avatar(me(), 30)}</a>
     </div></header>
     <main id="main" tabindex="-1"></main>
@@ -72,6 +77,7 @@ document.addEventListener('routed', (e) => {
     const n = a.dataset.nav;
     a.toggleAttribute('aria-current', n === '/' ? path === '/' : path.startsWith(n));
   });
+  $('.mgr')?.classList.toggle('on', MGR.some((m) => path.startsWith(m)));
   window.scrollTo(0, 0);
 });
 document.addEventListener('unread-changed', () => refreshUnread());
