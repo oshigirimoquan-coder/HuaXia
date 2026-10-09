@@ -1,6 +1,8 @@
 # 每 3 天自動連一次資料庫和網站：
 # 1. 讓 Supabase 免費專案不會因為 7 天沒人用而休眠
 # 2. 連不上時這個流程會失敗，GitHub 會自動寄信通知 repo 擁有者
+# 3. repo 超過 30 天沒有更新時，自動留一筆「空的」更新紀錄（不新增任何檔案），
+#    避免 GitHub 因為 60 天沒動靜而停掉這個排程
 name: 保活與健康檢查
 on:
   schedule:
@@ -30,3 +32,22 @@ jobs:
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' "https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/")
           if [ "$code" != "200" ]; then echo "::error::網站回應 $code"; exit 1; fi
+
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 超過 30 天沒更新就留一筆空紀錄
+        run: |
+          last=$(git log -1 --format=%ct)
+          days=$(( ( $(date +%s) - last ) / 86400 ))
+          echo "距離上次更新 $days 天"
+          if [ "$days" -ge 30 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "自動保活（$days 天沒有更新）"
+            git push
+          fi
