@@ -8,6 +8,9 @@
 
 | 文件 | 內容 |
 |---|---|
+| `AGENTS.md` | 給 AI 的專案說明（架構、權限、金鑰、測試） |
+| `club.md` | 社團需求表（其他社團 fork 後填這份） |
+| `CUSTOMIZE.md` | AI 照需求表改造的步驟 |
 | `docs/SETUP.md` | 第一次上線的設定步驟 |
 | `docs/HANDOVER.md` | 帳號轉移與換屆交接 |
 | `docs/MAINTENANCE.md` | 長期維護：自動檢查、定期工作、出問題怎麼辦 |
@@ -42,3 +45,7 @@ supabase/functions/*           Edge Functions 原始碼
 supabase/dashboard/*.ts        可直接貼到 Supabase 後台的單檔版
 tests/                         node:test 測試
 ```
+
+## 給其他社團
+
+fork 這個 repo → 填 `club.md`、素材放 `materials/` → 請 AI「照 `club.md` 和 `CUSTOMIZE.md` 改造」。授權：MIT（見 `LICENSE`）。
