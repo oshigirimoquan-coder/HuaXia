@@ -1,5 +1,5 @@
 import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
-import { partShortage, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES } from '../logic.js';
+import { partShortage, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES, parseNeeded, matchPart, partNameFromFile } from '../logic.js';
 import { seatSvg } from './seating.js';
 
 async function loadAll(pieceId = null) {
@@ -20,6 +20,7 @@ async function editPiece(pc = null) {
     fields: [
       { name: 'title', label: '曲名', required: true, value: pc?.title, full: true },
       { name: 'composer', label: '作曲／編曲', value: pc?.composer },
+      { name: 'ensemble', label: '屬於', type: 'select', value: pc?.ensemble || 'tutti', options: [['tutti', '大團'], ['sizhu', '絲竹']], hint: '絲竹曲目的總譜大家都看得到；大團只有組長和聲部長看得到' },
       { name: 'duration_min', label: '時長（分鐘）', type: 'number', step: '0.5', min: 0, value: pc?.duration_min },
       { name: 'notes', label: '備註', type: 'textarea', value: pc?.notes, full: true },
       { name: 'archived', label: '封存', type: 'toggle', text: '不在本學期曲目中（封存）', value: pc?.archived },
@@ -31,23 +32,22 @@ async function editPiece(pc = null) {
   if (r) { go(`/pieces/${r.data.id}`); render(); }
 }
 
-async function editPart(pieceId, part = null) {
+async function editPart(pieceId, part = null, nextSort = 1) {
   const people = activePeople().map((p) => [p.id, nameOf(p.id)]);
   const v = await formDialog({
     title: part ? `編輯聲部：${part.name}` : '新增聲部', danger: part ? '刪除' : null,
     fields: [
       { name: 'name', label: '聲部', required: true, value: part?.name, placeholder: '例：二胡I、打擊1、高笙' },
-      { name: 'needed', label: '需要人數（顯示用）', value: part?.needed ?? '1', placeholder: '例：2、2-3、1↑' },
-      { name: 'needed_min', label: '至少幾人（判斷缺人）', type: 'number', min: 0, value: part?.needed_min ?? 1 },
-      { name: 'section', label: '組別', type: 'select', value: part?.section || '', options: [['', '（依名稱自動判斷）'], ...SECTIONS.map((x) => [x, x])], hint: '槍手會看到這首曲子裡同組的分組樂譜' },
-      { name: 'sort', label: '排序', type: 'number', value: part?.sort ?? 0, hint: '數字小的排前面' },
-      { name: 'tutor_id', label: '小老師', type: 'select', value: part?.tutor_id || '', options: [['', '（無）'], ...people] },
+      { name: 'needed', label: '需要人數', value: part?.needed ?? '1', placeholder: '例：2、2-3、1↑', hint: '缺人判斷會自動取最小的數字' },
+      { name: 'section', label: '組別', type: 'select', value: part?.section || '', options: [['', '（依名稱自動判斷）'], ...SECTIONS.map((x) => [x, x])], hint: '座位表依組別排位置' },
+      { name: 'sort', label: '排序', type: 'number', value: part?.sort ?? nextSort, hint: '數字小的排前面；新增時會自動接在最後' },
+      { name: 'tutor_id', label: '聲部長（小老師）', type: 'select', value: part?.tutor_id || '', options: [['', '（無）'], ...people] },
       { name: 'note', label: '備註', value: part?.note, full: true, placeholder: '例：前面有 solo、需要八度達人' },
     ],
   });
   if (!v) return;
   if (v.__danger) { await run(() => sb.from('piece_parts').delete().eq('id', part.id), '已刪除聲部'); return render(); }
-  const row = { ...v, section: v.section || null, tutor_id: v.tutor_id || null, needed_min: v.needed_min ?? 0, sort: v.sort ?? 0 };
+  const row = { ...v, section: v.section || null, tutor_id: v.tutor_id || null, needed_min: parseNeeded(v.needed), sort: v.sort ?? nextSort };
   await run(() => part ? sb.from('piece_parts').update(row).eq('id', part.id) : sb.from('piece_parts').insert({ ...row, piece_id: pieceId }), '已儲存');
   render();
 }
@@ -104,22 +104,58 @@ function pickFiles(multiple, cb) {
 }
 const uploadScore = (piece, partId, section = null) => pickFiles(false, ([file]) => uploadFiles(piece, [{ file, part_id: partId, section }]));
 
-// 批次上傳：依檔名自動分到五個組（Ling Ling Suite 拆好的分譜直接整包丟進來）
-function batchUpload(piece) {
+// 批次上傳：Ling Ling Suite 拆好的分譜＋總譜整包丟進來，依檔名對到這首曲子的聲部；對不到的可以直接新增成聲部
+function batchUpload(piece, parts) {
   pickFiles(true, async (files) => {
-    files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
-    const opts = [['總譜', '總譜'], ...SECTIONS.map((x) => [x, x + '組']), ['', '（不上傳）']];
-    const v = await formDialog({
-      title: `批次上傳 ${files.length} 個檔案`, submit: '上傳',
-      fields: [{ type: 'note', name: '_n', text: '已依檔名自動分組，請確認一下，分錯或標「猜不到」的手動改。各組成員只看得到自己那組的譜。' },
-        ...files.map((f, i) => { const g = guessSection(f.name, piece.title); return { name: 'f' + i, label: f.name, type: 'select', value: g || '', options: opts, hint: g ? '' : '猜不到，請選擇' }; })],
+    files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant', { numeric: true }));
+    const guess = files.map((f) => matchPart(f.name, parts, piece.title));
+    const fields = [{ type: 'note', name: '_n', text: parts.length
+      ? '已依檔名對到聲部，請確認一下。對不到的可以選現有聲部，或「新增成聲部」。分譜只有排到該聲部的人看得到。'
+      : '這首曲子還沒有編制：檔名會直接變成聲部（之後再排人、改人數）。' }];
+    files.forEach((f, i) => {
+      const nm = partNameFromFile(f.name, piece.title) || f.name;
+      const opts = [['總譜', '總譜'], ...parts.map((pt) => [pt.id, pt.name]), ['new', `新增成聲部「${nm}」`], ['', '（不上傳）']];
+      const v = guess[i] || 'new';
+      fields.push({ name: 'f' + i, label: f.name, type: 'select', value: v, options: opts, hint: guess[i] || !parts.length ? '' : '對不到現有聲部' });
     });
+    const v = await formDialog({ title: `批次上傳 ${files.length} 個檔案`, submit: '上傳', fields });
     if (!v) return;
-    const items = files.map((file, i) => ({ file, g: v['f' + i] })).filter((x) => x.g)
-      .map(({ file, g }) => ({ file, section: g === '總譜' ? null : g }));
+    let sort = Math.max(0, ...parts.map((x) => x.sort ?? 0));
+    const items = [];
+    for (const [i, file] of files.entries()) {
+      const c = v['f' + i];
+      if (!c) continue;
+      if (c === '總譜') { items.push({ file }); continue; }
+      let pid = c;
+      if (c === 'new') {
+        const name = partNameFromFile(file.name, piece.title) || file.name;
+        const r = await run(() => sb.from('piece_parts').insert({ piece_id: piece.id, name, needed: '1', needed_min: 1, sort: ++sort }).select().single());
+        if (!r) continue; pid = r.data.id;
+      }
+      items.push({ file, part_id: pid });
+    }
     if (!items.length) return toast('沒有要上傳的檔案');
     uploadFiles(piece, items);
   });
+}
+
+// 匯入編制表：一行一個聲部，「聲部,人數」（可以從 Excel 或 Ling Ling Suite 複製貼上）
+async function importParts(piece, parts) {
+  const v = await formDialog({ title: '匯入編制表', submit: '匯入', fields: [
+    { type: 'note', name: '_n', text: '一行一個聲部，格式「聲部,人數」，例如「二胡I,4」。從 Excel 複製兩欄貼上也可以。已經有的聲部只會更新人數。' },
+    { name: 'text', label: '編制表', type: 'textarea', rows: 10, full: true, required: true },
+  ] });
+  if (!v) return;
+  let sort = Math.max(0, ...parts.map((x) => x.sort ?? 0)), add = 0, upd = 0;
+  for (const line of v.text.split(/\r?\n/)) {
+    const [name, needed = '1'] = line.split(/[,\t，]/).map((x) => x.trim());
+    if (!name || /^聲部$|^part$/i.test(name)) continue;
+    const ex = parts.find((p) => matchPart(name, [p]) === p.id && p.name.length === name.length) || parts.find((p) => p.name === name);
+    const row = { needed: needed || '1', needed_min: parseNeeded(needed) };
+    if (ex) { if (await run(() => sb.from('piece_parts').update(row).eq('id', ex.id))) upd++; }
+    else if (await run(() => sb.from('piece_parts').insert({ piece_id: piece.id, name, sort: ++sort, ...row }))) add++;
+  }
+  toast(`新增 ${add} 個、更新 ${upd} 個聲部`, 'ok'); render();
 }
 
 async function editScore(s) {
@@ -180,9 +216,10 @@ route('/pieces/:id', async ({ id }) => {
   const mine = new Set(asg.filter((a) => a.user_id === me()).map((a) => a.part_id));
   setTimeout(() => {
     $('#edit-piece')?.addEventListener('click', () => editPiece(pc));
-    $('#add-part')?.addEventListener('click', () => editPart(id));
+    $('#add-part')?.addEventListener('click', () => editPart(id, null, Math.max(0, ...pts.map((x) => x.sort ?? 0)) + 1));
+    $('#import-parts')?.addEventListener('click', () => importParts(pc, pts));
     $('#up-full')?.addEventListener('click', () => uploadScore(pc, null));
-    $('#batch-up')?.addEventListener('click', () => batchUpload(pc));
+    $('#batch-up')?.addEventListener('click', () => batchUpload(pc, pts));
     $$('[data-up-sec]').forEach((b) => (b.onclick = () => uploadScore(pc, null, b.dataset.upSec)));
     $$('[data-part-edit]').forEach((b) => (b.onclick = () => editPart(id, pts.find((x) => x.id === b.dataset.partEdit))));
     $$('[data-assign]').forEach((b) => (b.onclick = () => assign(pts.find((x) => x.id === b.dataset.assign), asg, ringers)));
@@ -193,22 +230,22 @@ route('/pieces/:id', async ({ id }) => {
   const scoreLinks = (partId, sec = null) => (scores || []).filter((s) => (s.part_id || null) === partId && (s.section || null) === sec).map((s) =>
     `<span class="score"><button class="link" data-score="${s.id}">📄 ${esc(s.title || '樂譜')}</button>${s.audio_url ? `<a class="link" href="${esc(s.audio_url)}" target="_blank" rel="noopener">▶ 示範</a>` : ''}${p.officer ? `<button class="icon-btn" data-score-edit="${s.id}" aria-label="編輯樂譜">⋯</button>` : ''}</span>`).join('');
   const full = (scores || []).filter((s) => !s.part_id && !s.section);
-  const secs = SECTIONS.filter((x) => p.officer || (scores || []).some((s) => s.section === x));
+  const secs = SECTIONS.filter((x) => (scores || []).some((s) => s.section === x)); // 舊的分組樂譜，有才顯示
   return `<a class="back" href="#/pieces">← 曲目</a>` +
     pageHead(pc.title, `${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min} 分鐘</span>` : ''}`, p.officer ? '<button class="btn" id="edit-piece">編輯曲目</button>' : '') +
     (pc.notes ? `<p class="note">${esc(pc.notes)}</p>` : '') +
-    ((p.staff || full.length) ? `<section class="card"><div class="card-head"><h2>總譜</h2>${p.officer ? '<button class="btn sm" id="up-full">上傳總譜</button>' : ''}</div>${full.length ? `<div class="scores">${scoreLinks(null)}</div>` : '<p class="muted small">尚未上傳</p>'}</section>` : '') +
-    ((p.officer || secs.length) ? `<section class="card"><div class="card-head"><h2>分組樂譜</h2>${p.officer ? '<button class="btn sm pri" id="batch-up">批次上傳</button>' : ''}</div>
-      ${p.officer ? '<p class="small muted">用 Ling Ling Suite 拆好的分譜可以整包丟進「批次上傳」，網站會依檔名分到各組。各組成員只看得到自己那組。</p>' : ''}
-      ${secs.length ? `<div class="sec-scores">${secs.map((x) => `<div class="sec-row"><div class="sec-name">${sectionChip(x)}</div><div class="scores">${scoreLinks(null, x) || '<span class="muted small">尚未上傳</span>'}</div>${p.officer ? `<button class="btn sm ghost" data-up-sec="${x}">上傳</button>` : ''}</div>`).join('')}</div>` : ''}
+    ((p.officer || full.length || secs.length) ? `<section class="card"><div class="card-head"><h2>樂譜</h2>${p.officer ? '<span class="actions"><button class="btn sm" id="up-full">上傳總譜</button><button class="btn sm pri" id="batch-up">批次上傳</button></span>' : ''}</div>
+      ${p.officer ? `<p class="small muted">用 Ling Ling Suite 拆好的分譜和總譜可以整包丟進「批次上傳」，網站會依檔名對到下面的聲部。${pc.ensemble === 'sizhu' ? '這是絲竹曲目，總譜大家都看得到。' : '這是大團曲目，總譜只有組長和聲部長看得到。'}</p>` : ''}
+      <div class="sec-row"><div class="sec-name"><b class="small">總譜</b></div><div class="scores">${full.length ? scoreLinks(null) : '<span class="muted small">尚未上傳</span>'}</div></div>
+      ${secs.map((x) => `<div class="sec-row"><div class="sec-name">${sectionChip(x)}</div><div class="scores">${scoreLinks(null, x)}</div></div>`).join('')}
     </section>` : '') +
-    `<section class="card"><div class="card-head"><h2>編制</h2>${p.officer ? '<button class="btn sm pri" id="add-part">＋ 聲部</button>' : ''}</div>
+    `<section class="card"><div class="card-head"><h2>編制</h2>${p.officer ? '<span class="actions"><button class="btn sm ghost" id="import-parts">匯入編制表</button><button class="btn sm pri" id="add-part">＋ 聲部</button></span>' : ''}</div>
      ${pts.length ? `<div class="parts">${pts.map((pt) => {
       const a = asg.filter((x) => x.part_id === pt.id); const short = partShortage(pt, a.length);
       return `<div class="part ${mine.has(pt.id) ? 'mine' : ''} ${short ? 'short' : ''}">
         <div class="part-name"><b>${esc(pt.name)}</b><span class="mono muted small">${esc(pt.needed)}</span>${short ? `<span class="chip bad">缺 ${short}</span>` : ''}</div>
         <div class="part-who">${a.map((x) => who(x, ringers)).join('') || '<span class="muted small">尚未排人</span>'}</div>
-        <div class="part-meta">${pt.tutor_id ? `<span class="small muted">小老師</span> ${chipPerson(pt.tutor_id)}` : ''}${pt.note ? `<span class="small muted">${esc(pt.note)}</span>` : ''}</div>
+        <div class="part-meta">${pt.tutor_id ? `<span class="small muted">聲部長</span> ${chipPerson(pt.tutor_id)}` : ''}${pt.note ? `<span class="small muted">${esc(pt.note)}</span>` : ''}</div>
         <div class="part-scores">${scoreLinks(pt.id)}</div>
         ${p.officer ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button><button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button><button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button></div>` : canStaff(pt) ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button></div>` : ''}
       </div>`; }).join('')}</div>` : '<p class="muted">還沒有設定聲部。</p>'}

@@ -241,3 +241,34 @@ export function reconcileSeats(saved, parts, asg) {
   const missing = cur.filter((c) => !have.has(keyOf(c)));
   return { seats, missing };
 }
+
+// 「需要人數」文字 → 至少幾人：'2' → 2、'2-3' → 2、'1↑' → 1、空白 → 1
+export function parseNeeded(s) {
+  const m = String(s ?? '').match(/\d+/);
+  return m ? Number(m[0]) : 1;
+}
+
+// 聲部名稱正規化：去掉符號空白，Ⅰ/I/1/一 視為同一個數字
+function normPart(s) {
+  let t = String(s || '').toLowerCase().replace(/[\s_\-–—.,，、()（）【】\[\]「」]/g, '');
+  const rom = [['iii', '3'], ['ii', '2'], ['iv', '4'], ['i', '1'], ['ⅲ', '3'], ['ⅱ', '2'], ['ⅰ', '1'], ['ⅳ', '4']];
+  for (const [a, b] of rom) t = t.replace(new RegExp(`${a}$`), b);
+  return t.replace(/[一壹]$/, '1').replace(/[二貳]$/, '2').replace(/[三參]$/, '3').replace(/[四肆]$/, '4');
+}
+// 檔名去掉副檔名與曲名，剩下的當作聲部名稱
+export function partNameFromFile(name, pieceTitle = '') {
+  let s = String(name || '').replace(/\.[^.]+$/, '');
+  if (pieceTitle) s = s.split(pieceTitle).join(' ');
+  return s.replace(/^[\s_\-–—.]+|[\s_\-–—.]+$/g, '').trim();
+}
+// 依檔名對到這首曲子的聲部：回傳 '總譜'、聲部 id，或 null（對不到）
+export function matchPart(fileName, parts, pieceTitle = '') {
+  const raw = partNameFromFile(fileName, pieceTitle);
+  if (/總譜|总谱|full\s*score|^score$/i.test(raw)) return '總譜';
+  const f = normPart(raw);
+  if (!f) return null;
+  const exact = parts.find((p) => normPart(p.name) === f);
+  if (exact) return exact.id;
+  const hits = parts.filter((p) => normPart(p.name) && f.includes(normPart(p.name))).sort((a, b) => normPart(b.name).length - normPart(a.name).length);
+  return hits[0]?.id || null;
+}

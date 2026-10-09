@@ -159,6 +159,10 @@ create table if not exists public.scores (
   created_by uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- 曲目屬於大團或絲竹（決定總譜給誰看）
+alter table public.pieces add column if not exists ensemble text not null default 'tutti';
+alter table public.pieces drop constraint if exists pieces_ensemble_check;
+alter table public.pieces add constraint pieces_ensemble_check check (ensemble in ('tutti','sizhu'));
 -- 分組樂譜：section 有值 = 給整組看（批次上傳時依檔名自動分組）
 alter table public.scores add column if not exists section text;
 alter table public.scores drop constraint if exists scores_section_check;
@@ -753,7 +757,15 @@ create policy ringer_self on public.ringers for select using (user_id = auth.uid
 create or replace function public.can_read_score(s public.scores) returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_staff()
+    -- 分譜：排到這個聲部的人
     or (s.part_id is not null and public.in_part(s.part_id))
+    -- 總譜：絲竹曲目大家都看得到；大團曲目給組長與這首曲子的聲部長（小老師）
+    or (s.part_id is null and s.section is null and (
+      (public.is_active() and exists (select 1 from pieces pc where pc.id = s.piece_id and pc.ensemble = 'sizhu')
+        and (public.is_insider() or public.in_piece(s.piece_id)))
+      or (public.is_active() and public.has_role('leader'))
+      or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.tutor_id = auth.uid())))
+    -- 舊的分組樂譜（相容）
     or (s.part_id is null and s.section is not null and (
       (public.is_insider() and s.section = public.my_section())
       or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.section = s.section and public.in_part(pp.id))))

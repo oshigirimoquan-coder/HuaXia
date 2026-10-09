@@ -149,3 +149,18 @@ test('座位表：依編制自動排位，拉弦在左、彈撥在右、打擊�
   assert.equal(r.seats.length, 17);
   assert.deepEqual(r.missing, [{ k: 'u:new', part: 'a' }]);
 });
+
+test('需要人數自動換算至少幾人；檔名對到聲部', async () => {
+  const { parseNeeded, matchPart, partNameFromFile } = await import('../js/logic.js');
+  assert.equal(parseNeeded('2'), 2); assert.equal(parseNeeded('2-3'), 2); assert.equal(parseNeeded('1↑'), 1); assert.equal(parseNeeded(''), 1);
+  const parts = [{ id: 'e1', name: '二胡I' }, { id: 'e2', name: '二胡II' }, { id: 'e0', name: '二胡' }, { id: 'd1', name: '笛一' }, { id: 'd2', name: '笛二' }, { id: 'b', name: '梆笛' }, { id: 'q', name: '曲笛' }];
+  assert.equal(matchPart('春天組曲_笛一.pdf', parts, '春天組曲'), 'd1');
+  assert.equal(matchPart('春天組曲_笛2.pdf', parts, '春天組曲'), 'd2');
+  assert.equal(matchPart('春天組曲-梆笛.pdf', parts, '春天組曲'), 'b');
+  assert.equal(matchPart('二胡 I.pdf', parts), 'e1');
+  assert.equal(matchPart('二胡Ⅱ.pdf', parts), 'e2');
+  assert.equal(matchPart('二胡.pdf', parts), 'e0');
+  assert.equal(matchPart('春天組曲_總譜.pdf', parts, '春天組曲'), '總譜');
+  assert.equal(matchPart('新笛.pdf', parts), null);
+  assert.equal(partNameFromFile('春天組曲_新笛.pdf', '春天組曲'), '新笛');
+});

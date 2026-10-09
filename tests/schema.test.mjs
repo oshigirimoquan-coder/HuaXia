@@ -275,3 +275,14 @@ test('排人：組長可以排自己組的聲部，不能排別組；座位表�
   assert.ok((await as(B, `update seating_charts set seats='[1]' where piece_id='${P1}' returning piece_id`)).rows.length === 0);
   assert.equal((await as(B, `select piece_id from seating_charts`)).rows.length, 1);
 });
+
+test('總譜：絲竹曲目大家都看得到；大團曲目只有組長、聲部長看得到', async () => {
+  const L = '00000000-0000-0000-0000-0000000000b2'; // 前面測試建立的拉弦組長
+  await as(A, `insert into scores (piece_id,title) values ('${P1}','P1總譜'),('${P2}','P2總譜'); update pieces set ensemble='sizhu' where id='${P2}'`);
+  const t = async (u) => (await as(u, `select title from scores where part_id is null and section is null order by title`)).rows.map((r) => r.title);
+  assert.deepEqual(await t(B), ['P2總譜']);            // 一般社員：只看到絲竹曲目的總譜
+  assert.deepEqual(await t(R), ['P2總譜']);            // 槍手有參與 P2
+  assert.deepEqual(await t(L), ['P1總譜', 'P2總譜']);  // 組長
+  await as(A, `update piece_parts set tutor_id='${B}' where id='${PT1}'`);
+  assert.deepEqual(await t(B), ['P1總譜', 'P2總譜']);  // 當上 P1 的聲部長
+});

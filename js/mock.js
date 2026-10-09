@@ -93,7 +93,7 @@ function fixtures() {
       { id: 'ap2', name: '林子豪', grade: '經濟二', contact: 'LINE：tzuhao', experience: 'basic', instruments_played: '國中學過笛子', interests: ['吹管'], want_class: false, message: '', status: 'contacted', officer_note: '10/7 已傳 LINE', created_at: at(-3, '12:10') },
     ],
     scores: [{ id: 'sc1', piece_id: 'p1', part_id: 'pp1', title: '二胡I 分譜', file_path: 'demo.pdf', audio_url: 'https://example.com' },
-      { id: 'sc2', piece_id: 'p1', section: '拉弦', title: '泰芙努特_二胡I', file_path: 'demo.pdf', audio_url: '' }, { id: 'sc3', piece_id: 'p1', section: '吹管', title: '泰芙努特_梆笛', file_path: 'demo.pdf', audio_url: '' }],
+      { id: 'sc2', piece_id: 'p1', part_id: null, title: '泰芙努特_總譜', file_path: 'demo.pdf', audio_url: '' }],
   };
 }
 
