@@ -61,50 +61,6 @@ export function partShortage(part, assignedCount) {
   return Math.max(0, (part.needed_min ?? 1) - assignedCount);
 }
 
-// ---------- 分部：聲部（parent_id 為空）底下可以有分部（parent_id 指向聲部），只分兩層 ----------
-// 排人的那個人：社員看 user_id，還沒註冊的槍手看 ringer_id
-const personKey = (a) => (a.user_id ? 'u:' + a.user_id : 'r:' + a.ringer_id);
-export const divisiOf = (partId, parts) => parts.filter((x) => x.parent_id === partId);
-// 排在這個聲部（含它所有分部）的不同人數
-function peopleIn(part, parts, asg) {
-  const ids = new Set([part.id, ...divisiOf(part.id, parts).map((x) => x.id)]);
-  return new Set(asg.filter((a) => ids.has(a.part_id)).map(personKey)).size;
-}
-// 缺幾人：分部與沒分部的聲部看自己排到的人；有分部的聲部看所有分部排到幾個不同的人（一人排在好幾個分部只算一人）
-export function shortageOf(part, parts, asg) {
-  return partShortage(part, peopleIn(part, parts, asg));
-}
-// 刪聲部會一起刪掉的分部數與排人（幾個不同的人）；資料庫刪聲部連分部與排人一起刪
-export function deleteCounts(part, parts, asg) {
-  return { divisi: divisiOf(part.id, parts).length, people: peopleIn(part, parts, asg) };
-}
-// 聲部表單的「所屬聲部」：parts 是這首曲目的聲部，part 是正在編輯的（新增時是 null）
-// 只列本身不是分部的聲部；自己有分部、或有分譜時不能收成分部（資料庫也會擋），blocked 寫原因
-export function parentChoices(part, parts, scores) {
-  if (part && divisiOf(part.id, parts).length) return { options: [], blocked: `「${part.name}」有分部，不能再收成別的聲部的分部` };
-  if (part && scores.some((s) => s.part_id === part.id)) return { options: [], blocked: `「${part.name}」有分譜，分部不能有樂譜：要先刪掉或移走它的分譜` };
-  return { options: parts.filter((x) => !x.parent_id && x.id !== part?.id).map((x) => [x.id, x.name]), blocked: null };
-}
-// 替排了人的聲部加第一個分部：聲部上的排人要移到分部（有分部的聲部不能排人）。
-// childId 是那個分部（新建的還沒有編號時給 null）；分部已經排了同一人的，那筆刪掉不移。
-// 寫入順序要照資料庫的觸發器：先刪 drop、再把 move 的 part_id 改成分部，最後才設分部的 parent_id
-export function divisiMovePlan(parentId, childId, asg) {
-  const onChild = new Set(asg.filter((a) => childId && a.part_id === childId).map(personKey));
-  const onParent = asg.filter((a) => a.part_id === parentId);
-  return {
-    people: onParent.length,
-    drop: onParent.filter((a) => onChild.has(personKey(a))).map((a) => a.id),
-    move: onParent.filter((a) => !onChild.has(personKey(a))).map((a) => a.id),
-  };
-}
-// 整首曲目缺幾人（曲目卡片用）：每個聲部取聲部缺的人與分部缺的位置加總較多的一邊，兩層不重複算
-export function pieceShortage(parts, asg) {
-  return parts.filter((x) => !x.parent_id).reduce((n, pt) => {
-    const kids = divisiOf(pt.id, parts).reduce((m, d) => m + shortageOf(d, parts, asg), 0);
-    return n + Math.max(shortageOf(pt, parts, asg), kids);
-  }, 0);
-}
-
 // 出席率顯示等級
 export function rateLevel(rate) {
   if (rate == null) return 'none';

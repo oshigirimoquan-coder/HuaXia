@@ -47,83 +47,6 @@ test('編制缺額不會變成負數', () => {
   assert.equal(partShortage({ needed_min: 1 }, 3), 0);
 });
 
-test('分部的缺人看自己的人數；有分部的聲部看所有分部排到幾個不同的人', async () => {
-  const { shortageOf } = await import('../js/logic.js');
-  // 擊樂2 要 2 人，底下風鈴、鈴鼓、沙球各要 1 人；阿甲一人負責風鈴與鈴鼓
-  const parts = [
-    { id: 'p', name: '擊樂2', needed_min: 2 },
-    { id: 'd1', name: '風鈴', needed_min: 1, parent_id: 'p' },
-    { id: 'd2', name: '鈴鼓', needed_min: 1, parent_id: 'p' },
-    { id: 'd3', name: '沙球', needed_min: 1, parent_id: 'p' },
-    { id: 'q', name: '高胡', needed_min: 2 },
-  ];
-  const asg = [{ part_id: 'd1', user_id: 'a' }, { part_id: 'd2', user_id: 'a' }, { part_id: 'q', user_id: 'b' }];
-  assert.equal(shortageOf(parts[0], parts, asg), 1);   // 只有阿甲一人，不是兩人
-  assert.equal(shortageOf(parts[1], parts, asg), 0);
-  assert.equal(shortageOf(parts[3], parts, asg), 1);
-  assert.equal(shortageOf(parts[4], parts, asg), 1);   // 沒分部的聲部照舊
-  // 槍手排在兩個分部也只算一人
-  const asg2 = [{ part_id: 'd1', ringer_id: 'r' }, { part_id: 'd3', ringer_id: 'r' }];
-  assert.equal(shortageOf(parts[0], parts, asg2), 1);
-  assert.equal(shortageOf(parts[0], parts, [...asg2, { part_id: 'd2', user_id: 'b' }]), 0);
-});
-
-test('曲目缺人：每個聲部取「聲部缺的人」與「分部缺的位置加總」較多的一邊，不重複算', async () => {
-  const { pieceShortage } = await import('../js/logic.js');
-  // 二胡要 8 人，I、II 各要 4 人：I 排 4 人、II 排 0 人 → 缺 4（不是聲部 4 加分部 4）
-  const erhu = [{ id: 'e', needed_min: 8 }, { id: 'e1', needed_min: 4, parent_id: 'e' }, { id: 'e2', needed_min: 4, parent_id: 'e' }];
-  const four = ['a', 'b', 'c', 'd'].map((u) => ({ part_id: 'e1', user_id: u }));
-  assert.equal(pieceShortage(erhu, four), 4);
-  // 擊樂要 2 人、三件樂器各要 1 人：2 人排滿聲部，但沙球沒人 → 缺 1
-  const perc = [{ id: 'p', needed_min: 2 }, { id: 'p1', needed_min: 1, parent_id: 'p' }, { id: 'p2', needed_min: 1, parent_id: 'p' }, { id: 'p3', needed_min: 1, parent_id: 'p' }];
-  assert.equal(pieceShortage(perc, [{ part_id: 'p1', user_id: 'a' }, { part_id: 'p2', user_id: 'b' }]), 1);
-  // 沒分部的聲部照舊相加（擊樂沒排人時，三件樂器缺 3 多於聲部缺 2）
-  assert.equal(pieceShortage([...erhu, ...perc, { id: 'q', needed_min: 2 }], four), 4 + 3 + 2);
-});
-
-test('所屬聲部：只列這首曲目本身不是分部的聲部；有分部或有分譜的聲部不能收成分部', async () => {
-  const { parentChoices } = await import('../js/logic.js');
-  const parts = [
-    { id: 'e', name: '二胡' }, { id: 'e1', name: '二胡I', parent_id: 'e' }, { id: 'e2', name: '二胡II', parent_id: 'e' },
-    { id: 'z', name: '中胡' }, { id: 'g', name: '高胡' },
-  ];
-  const scores = [{ part_id: 'g' }, { part_id: null }];
-  // 新增聲部：有分部的二胡也能選（加第二個分部）；分部不能選
-  assert.deepEqual(parentChoices(null, parts, scores), { options: [['e', '二胡'], ['z', '中胡'], ['g', '高胡']], blocked: null });
-  // 分部可以換到別的聲部或移出來，自己不在選項裡
-  assert.deepEqual(parentChoices(parts[1], parts, scores).options, [['e', '二胡'], ['z', '中胡'], ['g', '高胡']]);
-  assert.deepEqual(parentChoices(parts[3], parts, scores), { options: [['e', '二胡'], ['g', '高胡']], blocked: null });
-  // 有分部的聲部、有分譜的聲部：不能選所屬聲部，說明原因
-  assert.deepEqual(parentChoices(parts[0], parts, scores).options, []);
-  assert.match(parentChoices(parts[0], parts, scores).blocked, /二胡.*有分部/);
-  assert.deepEqual(parentChoices(parts[4], parts, scores).options, []);
-  assert.match(parentChoices(parts[4], parts, scores).blocked, /高胡.*分譜/);
-});
-
-test('加第一個分部：聲部上的排人移到分部，分部已經有的同一人不重複', async () => {
-  const { divisiMovePlan } = await import('../js/logic.js');
-  const asg = [
-    ...['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((u) => ({ id: 'x' + u, part_id: 'e', user_id: u })),
-    { id: 'xr', part_id: 'e', ringer_id: 'r' },
-    { id: 'ya', part_id: 'e1', user_id: 'a' }, { id: 'yr', part_id: 'e1', user_id: 'r' }, { id: 'z', part_id: 'q', user_id: 'b' },
-  ];
-  const plan = divisiMovePlan('e', 'e1', asg);
-  assert.equal(plan.people, 9);
-  assert.deepEqual(plan.drop, ['xa']);                         // 阿 a 已經排在 e1
-  assert.deepEqual(plan.move, ['xb', 'xc', 'xd', 'xe', 'xf', 'xg', 'xh', 'xr']);  // 槍手 r 與社員 r 是不同人
-  // 新建的分部還沒有人；聲部沒排人時什麼都不用移
-  assert.deepEqual(divisiMovePlan('e', null, asg).move.length, 9);
-  assert.deepEqual(divisiMovePlan('q2', 'e1', asg), { people: 0, drop: [], move: [] });
-});
-
-test('刪有分部的聲部：算出會一起刪掉幾個分部、幾人的排人（一人排在好幾個分部算一人）', async () => {
-  const { deleteCounts } = await import('../js/logic.js');
-  const parts = [{ id: 'p' }, { id: 'p1', parent_id: 'p' }, { id: 'p2', parent_id: 'p' }, { id: 'p3', parent_id: 'p' }, { id: 'q' }];
-  const asg = [{ part_id: 'p1', user_id: 'a' }, { part_id: 'p2', user_id: 'a' }, { part_id: 'p3', ringer_id: 'r' }, { part_id: 'q', user_id: 'b' }];
-  assert.deepEqual(deleteCounts(parts[0], parts, asg), { divisi: 3, people: 2 });
-  assert.deepEqual(deleteCounts(parts[4], parts, asg), { divisi: 0, people: 1 });
-});
-
 test('出席率分級', () => {
   assert.equal(rateLevel(null), 'none');
   assert.equal(rateLevel(80), 'ok');
@@ -225,21 +148,6 @@ test('座位表：依編制自動排位，拉弦在左、彈撥在右、打擊�
   const r = reconcileSeats(s, parts, [...asg.filter((a) => a.user_id !== 'a0'), { part_id: 'a', user_id: 'new' }]);
   assert.equal(r.seats.length, 17);
   assert.deepEqual(r.missing, [{ k: 'u:new', part: 'a' }]);
-});
-
-test('座位表：排在分部的人照分部的組別（等於所屬聲部的）排位置，名稱猜不出組別也一樣', async () => {
-  const { autoSeat } = await import('../js/logic.js');
-  const parts = [
-    { id: 'e', name: '二胡', section: '拉弦', sort: 1 }, { id: 'e1', name: 'I', section: '拉弦', parent_id: 'e', sort: 2 },
-    { id: 'p', name: '擊樂2', section: '打擊', sort: 3 }, { id: 'p1', name: '雨柱', section: '打擊', parent_id: 'p', sort: 4 },
-    { id: 'y', name: '揚琴', section: '彈撥', sort: 5 },
-  ];
-  const asg = [{ part_id: 'e1', user_id: 'a' }, { part_id: 'e1', user_id: 'b' }, { part_id: 'p1', user_id: 'c' }, { part_id: 'y', user_id: 'd' }];
-  const s = autoSeat(parts, asg, { w: 12, d: 8 });
-  const at = (u) => s.find((x) => x.k === 'u:' + u);
-  assert.ok(at('a').x < 0 && at('b').x < 0);            // 拉弦在左
-  assert.ok(at('c').y > Math.max(at('a').y, at('d').y)); // 打擊在最後
-  assert.equal(at('a').part, 'e1');
 });
 
 test('需要人數自動換算至少幾人；檔名對到聲部', async () => {

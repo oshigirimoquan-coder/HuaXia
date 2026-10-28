@@ -1,6 +1,6 @@
 import { secsOf, mySecs } from '../core.js';
 import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
-import { shortageOf, pieceShortage, divisiOf, parentChoices, divisiMovePlan, deleteCounts, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES, parseNeeded, matchPart, partNameFromFile } from '../logic.js';
+import { partShortage, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES, parseNeeded, matchPart, partNameFromFile } from '../logic.js';
 import { seatSvg } from './seating.js';
 
 async function loadAll(pieceId = null) {
@@ -12,8 +12,6 @@ async function loadAll(pieceId = null) {
   ]);
   return { pieces: pieces.data || [], parts: parts.data || [], asg: asg.data || [], ringers: ringers.data || [] };
 }
-// 有分部的聲部展開或收起（這次開著網頁時記住；沒動過的照預設）
-const openVoices = new Map();
 const ringerName = (rs, id) => rs.find((r) => r.id === id)?.name || '槍手';
 const who = (a, rs) => a.user_id ? chipPerson(a.user_id) : `<span class="person ringer">${esc(ringerName(rs, a.ringer_id))}<small>槍手</small></span>`;
 
@@ -35,59 +33,24 @@ async function editPiece(pc = null) {
   if (r) { go(`/pieces/${r.data.id}`); render(); }
 }
 
-// cx：這首曲目的 { pieceId, pts, asg, scores }
-async function editPart(cx, part = null, nextSort = 1) {
+async function editPart(pieceId, part = null, nextSort = 1) {
   const people = activePeople().map((p) => [p.id, nameOf(p.id)]);
-  const choices = parentChoices(part, cx.pts, cx.scores);
   const v = await formDialog({
-    title: part ? `編輯聲部：${part.name}` : '新增聲部', danger: part ? '刪除' : null, switchBy: 'parent_id',
+    title: part ? `編輯聲部：${part.name}` : '新增聲部', danger: part ? '刪除' : null,
     fields: [
       { name: 'name', label: '聲部', required: true, value: part?.name, placeholder: '例：二胡I、打擊1、高笙' },
       { name: 'needed', label: '需要人數', value: part?.needed ?? '1', placeholder: '例：2、2-3、1↑', hint: '缺人判斷會自動取最小的數字' },
-      { name: 'parent_id', label: '所屬聲部', type: 'select', value: part?.parent_id || '', options: [['', '（無）'], ...choices.options],
-        hint: choices.blocked || '選了就是那個聲部的分部，共看它的分譜' },
-      // 分部的組別與聲部長跟著所屬聲部，選了所屬聲部就不顯示
-      { name: 'section', label: '組別', type: 'select', value: part?.section || '', options: [['', '（依名稱自動判斷）'], ...SECTIONS.map((x) => [x, x])], hint: '座位表依組別排位置', only: [''] },
+      { name: 'section', label: '組別', type: 'select', value: part?.section || '', options: [['', '（依名稱自動判斷）'], ...SECTIONS.map((x) => [x, x])], hint: '座位表依組別排位置' },
       { name: 'sort', label: '排序', type: 'number', value: part?.sort ?? nextSort, hint: '數字小的排前面；新增時會自動接在最後' },
-      { name: 'tutor_id', label: '聲部長（小老師）', type: 'select', value: part?.tutor_id || '', options: [['', '（無）'], ...people], only: [''] },
+      { name: 'tutor_id', label: '聲部長（小老師）', type: 'select', value: part?.tutor_id || '', options: [['', '（無）'], ...people] },
       { name: 'note', label: '備註', value: part?.note, full: true, placeholder: '例：前面有 solo、需要八度達人' },
     ],
   });
   if (!v) return;
-  if (v.__danger) {
-    // 有分部的聲部：資料庫連分部與排人一起刪，先寫出數量再確認一次
-    const n = deleteCounts(part, cx.pts, cx.asg);
-    if (n.divisi && !(await formDialog({ title: `刪除聲部「${part.name}」`, submit: '刪除', fields: [{ type: 'note', name: '_n',
-      text: `會一起刪掉 ${n.divisi} 個分部、${n.people} 人的排人。` }] }))) return;
-    await run(() => sb.from('piece_parts').delete().eq('id', part.id), '已刪除聲部'); return render();
-  }
-  const parentId = v.parent_id || null;
-  const row = { ...v, parent_id: parentId, section: v.section || null, tutor_id: parentId ? null : v.tutor_id || null, needed_min: parseNeeded(v.needed), sort: v.sort ?? nextSort };
-  // 收進排了人的聲部（加第一個分部）：確認後把聲部上的人移到這個分部
-  const moving = parentId && parentId !== part?.parent_id ? divisiMovePlan(parentId, part?.id ?? null, cx.asg) : null;
-  if (moving?.people) {
-    const par = cx.pts.find((x) => x.id === parentId);
-    const ok = await formDialog({ title: '把排人移到分部', submit: '移過去', fields: [{ type: 'note', name: '_n',
-      text: `「${par.name}」排了 ${moving.people} 人，有分部的聲部不能排人。確認後這 ${moving.people} 人移到分部「${v.name}」。` }] });
-    if (!ok) return;
-    await saveFirstDivisi(cx, part, row, parentId);
-  } else {
-    await run(() => part ? sb.from('piece_parts').update(row).eq('id', part.id) : sb.from('piece_parts').insert({ ...row, piece_id: cx.pieceId }), '已儲存');
-  }
+  if (v.__danger) { await run(() => sb.from('piece_parts').delete().eq('id', part.id), '已刪除聲部'); return render(); }
+  const row = { ...v, section: v.section || null, tutor_id: v.tutor_id || null, needed_min: parseNeeded(v.needed), sort: v.sort ?? nextSort };
+  await run(() => part ? sb.from('piece_parts').update(row).eq('id', part.id) : sb.from('piece_parts').insert({ ...row, piece_id: pieceId }), '已儲存');
   render();
-}
-
-// 依資料庫觸發器接受的順序寫入（見 divisiMovePlan）：分部先以原本的所屬聲部存好，移完人才設成新的所屬聲部。
-// 中途失敗時已移的人留在這個分部，再存一次就會接著完成
-async function saveFirstDivisi(cx, part, row, parentId) {
-  const first = { ...row, parent_id: part?.parent_id ?? null };
-  const saved = await run(() => part ? sb.from('piece_parts').update(first).eq('id', part.id).select().single() : sb.from('piece_parts').insert({ ...first, piece_id: cx.pieceId }).select().single());
-  if (!saved) return;
-  const childId = saved.data.id;
-  const plan = divisiMovePlan(parentId, childId, cx.asg);
-  if (plan.drop.length && !(await run(() => sb.from('part_assignments').delete().in('id', plan.drop)))) return;
-  if (plan.move.length && !(await run(() => sb.from('part_assignments').update({ part_id: childId }).in('id', plan.move)))) return;
-  await run(() => sb.from('piece_parts').update({ parent_id: parentId }).eq('id', childId), `已儲存，${plan.people} 人移到「${row.name}」`);
 }
 
 async function assign(part, asg, ringers) {
@@ -218,7 +181,7 @@ route('/pieces', async () => {
   const list = pieces.filter((pc) => showArch || !pc.archived);
   const card = (pc) => {
     const pts = parts.filter((x) => x.piece_id === pc.id);
-    const short = pieceShortage(pts, asg);
+    const short = pts.reduce((n, pt) => n + partShortage(pt, asg.filter((a) => a.part_id === pt.id).length), 0);
     const my = pts.filter((pt) => mineParts.has(pt.id)).map((pt) => pt.name);
     return `<a class="piece-card ${pc.archived ? 'arch' : ''}" href="#/pieces/${pc.id}">
       <h3>${esc(pc.title)}</h3><p class="muted small">${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min}′</span>` : ''}</p>
@@ -245,49 +208,27 @@ route('/pieces/:id', async ({ id }) => {
     sb.from('scores').select('*').eq('piece_id', id).order('created_at'),
     sb.from('seating_charts').select('*').eq('piece_id', id).maybeSingle(),
   ]);
-  // 排人：幹部全部；組長排自己組；小老師排自己帶的聲部與它的分部（與資料庫 can_staff_part 一致）
-  const canStaff = (pt) => p.officer || pt.tutor_id === me() || (pt.parent_id && pts.find((x) => x.id === pt.parent_id)?.tutor_id === me())
-    || (p.leader && mySecs().includes(pt.section || guessSection(pt.name)));
+  // 排人：幹部全部；組長排自己組；小老師排自己帶的聲部（與資料庫 can_staff_part 一致）
+  const canStaff = (pt) => p.officer || pt.tutor_id === me() || (p.leader && mySecs().includes(pt.section || guessSection(pt.name)));
   const pieceAsg = asg.filter((a) => pts.some((x) => x.id === a.part_id));
   const seatStage = { ...STAGES.hall, style: 'arc', ...(chart?.stage || {}) };
   const seatList = chart?.seats?.length ? reconcileSeats(chart.seats, pts, pieceAsg).seats : autoSeat(pts, pieceAsg, seatStage);
   const mine = new Set(asg.filter((a) => a.user_id === me()).map((a) => a.part_id));
   setTimeout(() => {
     $('#edit-piece')?.addEventListener('click', () => editPiece(pc));
-    const cx = { pieceId: id, pts, asg, scores: scores || [] };
-    $('#add-part')?.addEventListener('click', () => editPart(cx, null, Math.max(0, ...pts.map((x) => x.sort ?? 0)) + 1));
+    $('#add-part')?.addEventListener('click', () => editPart(id, null, Math.max(0, ...pts.map((x) => x.sort ?? 0)) + 1));
     $('#import-parts')?.addEventListener('click', () => importParts(pc, pts));
     $('#up-full')?.addEventListener('click', () => uploadScore(pc, null));
-    $('#batch-up')?.addEventListener('click', () => batchUpload(pc, pts.filter((x) => !x.parent_id)));  // 分部不能有樂譜
+    $('#batch-up')?.addEventListener('click', () => batchUpload(pc, pts));
     $$('[data-up-sec]').forEach((b) => (b.onclick = () => uploadScore(pc, null, b.dataset.upSec)));
-    $$('[data-part-edit]').forEach((b) => (b.onclick = () => editPart(cx, pts.find((x) => x.id === b.dataset.partEdit))));
+    $$('[data-part-edit]').forEach((b) => (b.onclick = () => editPart(id, pts.find((x) => x.id === b.dataset.partEdit))));
     $$('[data-assign]').forEach((b) => (b.onclick = () => assign(pts.find((x) => x.id === b.dataset.assign), asg, ringers)));
     $$('[data-up]').forEach((b) => (b.onclick = () => uploadScore(pc, b.dataset.up)));
     $$('[data-score]').forEach((b) => (b.onclick = () => openScore((scores || []).find((s) => s.id === b.dataset.score))));
     $$('[data-score-edit]').forEach((b) => (b.onclick = () => editScore((scores || []).find((s) => s.id === b.dataset.scoreEdit))));
-    $$('[data-divisi-toggle]').forEach((b) => (b.onclick = () => {
-      const open = b.getAttribute('aria-expanded') !== 'true';
-      openVoices.set(b.dataset.divisiToggle, open);
-      b.setAttribute('aria-expanded', String(open)); b.firstChild.textContent = open ? '▾' : '▸';
-      $(`[data-divisi-of="${b.dataset.divisiToggle}"]`).hidden = !open;
-    }));
   });
   const scoreLinks = (partId, sec = null) => (scores || []).filter((s) => (s.part_id || null) === partId && (s.section || null) === sec).map((s) =>
     `<span class="score"><button class="link" data-score="${s.id}">📄 ${esc(s.title || '樂譜')}</button>${s.audio_url ? `<a class="link" href="${esc(s.audio_url)}" target="_blank" rel="noopener">▶ 示範</a>` : ''}${p.officer ? `<button class="icon-btn" data-score-edit="${s.id}" aria-label="編輯樂譜">⋯</button>` : ''}</span>`).join('');
-  // 一列聲部或分部；o.scores 是要顯示哪個聲部的分譜（分部沒有自己的譜，排在裡面的人看所屬聲部的）
-  const partRow = (pt, o) => {
-    const a = asg.filter((x) => x.part_id === pt.id); const short = shortageOf(pt, pts, asg);
-    const acts = (o.assign && canStaff(pt) ? `<button class="btn sm" data-assign="${pt.id}">排人</button>` : '') +
-      (p.officer && o.upload ? `<button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button>` : '') +
-      (p.officer ? `<button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button>` : '');
-    return `<div class="part ${(o.mine ?? mine.has(pt.id)) ? 'mine' : ''} ${short ? 'short' : ''}">
-        <div class="part-name"><b>${esc(pt.name)}</b><span class="mono muted small">${esc(pt.needed)}</span>${short ? `<span class="chip bad">缺 ${short}</span>` : ''}</div>
-        <div class="part-who">${o.who ?? (a.map((x) => who(x, ringers)).join('') || '<span class="muted small">尚未排人</span>')}</div>
-        <div class="part-meta">${pt.tutor_id ? `<span class="small muted">聲部長</span> ${chipPerson(pt.tutor_id)}` : ''}${pt.note ? `<span class="small muted">${esc(pt.note)}</span>` : ''}</div>
-        <div class="part-scores">${o.scores ? scoreLinks(o.scores) : ''}</div>
-        ${acts ? `<div class="part-act">${acts}</div>` : ''}
-      </div>`;
-  };
   const full = (scores || []).filter((s) => !s.part_id && !s.section);
   const secs = SECTIONS.filter((x) => (scores || []).some((s) => s.section === x)); // 舊的分組樂譜，有才顯示
   return `<a class="back" href="#/pieces">← 曲目</a>` +
@@ -299,16 +240,15 @@ route('/pieces/:id', async ({ id }) => {
       ${secs.map((x) => `<div class="sec-row"><div class="sec-name">${sectionChip(x)}</div><div class="scores">${scoreLinks(null, x)}</div></div>`).join('')}
     </section>` : '') +
     `<section class="card"><div class="card-head"><h2>編制</h2>${p.officer ? '<span class="actions"><button class="btn sm ghost" id="import-parts">匯入編制表</button><button class="btn sm pri" id="add-part">＋ 聲部</button></span>' : ''}</div>
-     ${pts.length ? `<div class="parts">${pts.filter((pt) => !pt.parent_id).map((pt) => {
-      const kids = divisiOf(pt.id, pts);
-      if (!kids.length) return partRow(pt, { assign: true, upload: true, scores: pt.id });
-      // 有分部的聲部：人數與缺額看所有分部排到的不同人，排人在分部；分部預設收起，自己排在裡面的那個聲部預設展開
-      const open = openVoices.get(pt.id) ?? kids.some((d) => mine.has(d.id));
-      const kidShort = kids.reduce((n, d) => n + shortageOf(d, pts, asg), 0);
-      const toggle = `<button type="button" class="link divisi-toggle" data-divisi-toggle="${pt.id}" aria-expanded="${open}"><span>${open ? '▾' : '▸'}</span> ${kids.length} 個分部${kidShort ? `・分部缺 ${kidShort}` : ''}</button>`;
-      return partRow(pt, { upload: true, scores: pt.id, who: toggle, mine: kids.some((d) => mine.has(d.id)) }) +
-        `<div class="divisi" data-divisi-of="${pt.id}" ${open ? '' : 'hidden'}>${kids.map((d) => partRow(d, { assign: true, scores: mine.has(d.id) ? pt.id : null })).join('')}</div>`;
-    }).join('')}</div>` : '<p class="muted">還沒有設定聲部。</p>'}
+     ${pts.length ? `<div class="parts">${pts.map((pt) => {
+      const a = asg.filter((x) => x.part_id === pt.id); const short = partShortage(pt, a.length);
+      return `<div class="part ${mine.has(pt.id) ? 'mine' : ''} ${short ? 'short' : ''}">
+        <div class="part-name"><b>${esc(pt.name)}</b><span class="mono muted small">${esc(pt.needed)}</span>${short ? `<span class="chip bad">缺 ${short}</span>` : ''}</div>
+        <div class="part-who">${a.map((x) => who(x, ringers)).join('') || '<span class="muted small">尚未排人</span>'}</div>
+        <div class="part-meta">${pt.tutor_id ? `<span class="small muted">聲部長</span> ${chipPerson(pt.tutor_id)}` : ''}${pt.note ? `<span class="small muted">${esc(pt.note)}</span>` : ''}</div>
+        <div class="part-scores">${scoreLinks(pt.id)}</div>
+        ${p.officer ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button><button class="btn sm ghost" data-up="${pt.id}">上傳分譜</button><button class="btn sm ghost" data-part-edit="${pt.id}">編輯</button></div>` : canStaff(pt) ? `<div class="part-act"><button class="btn sm" data-assign="${pt.id}">排人</button></div>` : ''}
+      </div>`; }).join('')}</div>` : '<p class="muted">還沒有設定聲部。</p>'}
      ${!p.staff ? '<p class="small muted">分譜只顯示你負責的聲部。</p>' : ''}</section>` +
     (pieceAsg.length ? `<section class="card"><div class="card-head"><h2>座位表</h2><a class="btn sm ${p.officer || p.leader ? 'pri' : ''}" href="#/pieces/${id}/seating">${p.officer || p.leader ? '調整座位表' : '查看'}</a></div>
       <p class="small muted">${chart ? '已排好座位，' : '還沒儲存過，下面是依編制自動排的版本，'}${p.officer || p.leader ? '點「調整座位表」可以拖曳微調、換舞台大小。' : '幹部或組長會再微調。'}</p>

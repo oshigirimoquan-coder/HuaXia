@@ -207,89 +207,6 @@ create trigger piece_parts_section before insert or update on public.piece_parts
   for each row execute function public.piece_parts_section();
 update public.piece_parts set section = public.guess_section(name) where section is null;
 
--- 分部：聲部（對應一份分譜）底下可以再分排人的單位，例如二胡分 I、II，擊樂 2 依樂器分成風鈴、鈴鼓。
--- parent_id 有值 = 這是那個聲部的分部。只分兩層；刪聲部連分部一起刪（分部的排人與樂譜再照原本的 cascade 刪）。
--- 規則都在資料庫擋（網頁、泠靈、手動改資料都繞不過去），違反時錯誤代碼 23514：
---   分部不能再分出分部；有分部的聲部不能被收成分部；分部與所屬聲部同一首曲目；
---   樂譜只掛在聲部（分部不能有樂譜）；排人只排在分部（有分部的聲部不能有排人）。
-alter table public.piece_parts add column if not exists parent_id uuid references public.piece_parts(id) on delete cascade;
-create index if not exists piece_parts_parent on public.piece_parts (parent_id) where parent_id is not null;
-create or replace function public.piece_parts_tree() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare par piece_parts;
-begin
-  if new.parent_id is not null then
-    -- 鎖住所屬聲部，同時有人替它排人或把它收成分部時排隊，不會兩邊都檢查通過
-    select * into par from piece_parts where id = new.parent_id for update;
-    if new.parent_id = new.id then
-      raise exception '聲部不能是自己的分部' using errcode = '23514';
-    end if;
-    if par.parent_id is not null then
-      raise exception '「%」已經是分部，分部不能再分出分部', par.name using errcode = '23514';
-    end if;
-    if par.piece_id <> new.piece_id then
-      raise exception '分部與所屬聲部要在同一首曲目' using errcode = '23514';
-    end if;
-    if exists (select 1 from part_assignments where part_id = new.parent_id) then
-      raise exception '「%」排了人，要先把人移到分部，才能替它分出分部', par.name using errcode = '23514';
-    end if;
-    if tg_op = 'UPDATE' and exists (select 1 from scores where part_id = new.id) then
-      raise exception '「%」有樂譜，分部不能有樂譜：要先刪掉或移走它的樂譜才能收成分部', new.name using errcode = '23514';
-    end if;
-    new.section := par.section;  -- 分部的聲部組跟著所屬聲部
-  end if;
-  if tg_op = 'UPDATE' then
-    if (new.parent_id is not null or new.piece_id <> old.piece_id)
-       and exists (select 1 from piece_parts c where c.parent_id = new.id) then
-      raise exception '有分部的聲部不能被收成分部，也不能移到別首曲目：%', new.name using errcode = '23514';
-    end if;
-  end if;
-  return new;
-end $$;
--- 觸發器依名稱順序執行：piece_parts_tree 排在 piece_parts_section 之後
-drop trigger if exists piece_parts_tree on public.piece_parts;
-create trigger piece_parts_tree before insert or update on public.piece_parts
-  for each row execute function public.piece_parts_tree();
--- 聲部改聲部組時，分部跟著改
-create or replace function public.piece_parts_section_down() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  update piece_parts set section = new.section where parent_id = new.id and section is distinct from new.section;
-  return null;
-end $$;
-drop trigger if exists piece_parts_section_down on public.piece_parts;
-create trigger piece_parts_section_down after update of section on public.piece_parts
-  for each row when (new.section is distinct from old.section) execute function public.piece_parts_section_down();
--- 樂譜不能掛在分部、有分部的聲部不能排人；鎖住聲部那一列，與同時把它收成分部的修改排隊
-create or replace function public.scores_divisi() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare pp piece_parts;
-begin
-  if new.part_id is not null then
-    select * into pp from piece_parts where id = new.part_id for share;
-    if pp.parent_id is not null then
-      raise exception '「%」是分部，分部不能有樂譜：樂譜掛在所屬聲部', pp.name using errcode = '23514';
-    end if;
-  end if;
-  return new;
-end $$;
-drop trigger if exists scores_divisi on public.scores;
-create trigger scores_divisi before insert or update of part_id on public.scores
-  for each row execute function public.scores_divisi();
-create or replace function public.part_assignments_divisi() returns trigger
-language plpgsql security definer set search_path = public as $$
-declare pp piece_parts;
-begin
-  select * into pp from piece_parts where id = new.part_id for share;
-  if exists (select 1 from piece_parts where parent_id = new.part_id) then
-    raise exception '「%」有分部，有分部的聲部不能排人：排在分部', pp.name using errcode = '23514';
-  end if;
-  return new;
-end $$;
-drop trigger if exists part_assignments_divisi on public.part_assignments;
-create trigger part_assignments_divisi before insert or update of part_id on public.part_assignments
-  for each row execute function public.part_assignments_divisi();
-
 -- 座位表：每首曲子一份；seats = [{k:'u:<id>'|'r:<id>', part:<part id>, x, y}]（公尺，舞台前緣中央為 0,0）
 create table if not exists public.seating_charts (
   piece_id uuid primary key references public.pieces(id) on delete cascade,
@@ -762,8 +679,7 @@ create or replace function public.can_see_report(rid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from practice_reports r where r.id = rid and (
     r.user_id = auth.uid() or public.is_staff() or public.leads_user(r.user_id)
-    or exists (select 1 from piece_parts pp left join piece_parts par on par.id = pp.parent_id
-               where pp.id = r.part_id and (pp.tutor_id = auth.uid() or par.tutor_id = auth.uid()))  -- 含所屬聲部的聲部長
+    or exists (select 1 from piece_parts pp where pp.id = r.part_id and pp.tutor_id = auth.uid())
     or exists (select 1 from class_students cs join classes c on c.id = cs.class_id
                where cs.user_id = r.user_id and auth.uid() = any(c.teacher_ids))))
 $$;
@@ -896,11 +812,8 @@ create policy cal_admin on public.calendars for all using (public.is_admin()) wi
 
 create or replace function public.can_staff_part(pid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
-  select public.is_officer() or (public.is_active() and exists (select 1 from piece_parts pp
-    left join piece_parts par on par.id = pp.parent_id  -- 分部：所屬聲部的聲部長也能排
-    where pp.id = pid and (
-    pp.tutor_id = auth.uid() or par.tutor_id = auth.uid()
-    or (public.has_role('leader') and pp.section is not null and pp.section = any(public.my_sections())))))
+  select public.is_officer() or (public.is_active() and exists (select 1 from piece_parts pp where pp.id = pid and (
+    pp.tutor_id = auth.uid() or (public.has_role('leader') and pp.section is not null and pp.section = any(public.my_sections())))))
 $$;
 -- 曲目與編制：社內成員看全部；槍手只看自己參與的曲目
 create policy piece_read on public.pieces for select using (public.is_insider() or public.in_piece(id));
@@ -919,9 +832,8 @@ create policy ringer_self on public.ringers for select using (user_id = auth.uid
 create or replace function public.can_read_score(s public.scores) returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_staff()
-    -- 分譜：排到這個聲部、或排到它任一個分部的人
-    or (s.part_id is not null and (public.in_part(s.part_id)
-      or exists (select 1 from piece_parts c where c.parent_id = s.part_id and public.in_part(c.id))))
+    -- 分譜：排到這個聲部的人
+    or (s.part_id is not null and public.in_part(s.part_id))
     -- 總譜：絲竹曲目大家都看得到；大團曲目給組長與這首曲子的聲部長（小老師）
     or (s.part_id is null and s.section is null and (
       (public.is_active() and exists (select 1 from pieces pc where pc.id = s.piece_id and pc.ensemble = 'sizhu')
@@ -933,7 +845,7 @@ language sql stable security definer set search_path = public as $$
       (public.is_insider() and s.section = any(public.my_sections()))
       or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.section = s.section and public.in_part(pp.id))))
 $$;
--- 樂譜：幹部與指導老師看全部；分譜看自己聲部（排在分部的看所屬聲部的）；分組樂譜看自己那一組
+-- 樂譜：幹部與指導老師看全部；分譜看自己聲部；分組樂譜看自己那一組
 -- （槍手沒有組別：排進這首曲子、且聲部屬於該組時也看得到）
 create policy score_read on public.scores for select using (public.can_read_score(scores));
 create policy score_write on public.scores for all using (public.is_officer()) with check (public.is_officer());
@@ -1064,14 +976,12 @@ create policy photos_delete on storage.objects for delete using (
 -- =====================================================================
 -- 泠靈（Ling Ling Suite）發譜函式（介面與依賴的欄位見 docs/LINGLING.md）
 -- =====================================================================
--- 泠靈把一首曲目的發譜（新建曲目、建聲部並把現有聲部收成它的分部、改人數與聲部組、登記新樂譜、撤掉舊樂譜的登記、掛場次）
+-- 泠靈把一首曲目的發譜（新建曲目、建聲部、改人數與聲部組、登記新樂譜、撤掉舊樂譜的登記、掛場次）
 -- 一次交給這個函式：任何一步失敗，整次呼叫都不生效。以呼叫者身分執行（security invoker），
 -- 上面的 RLS 照常生效，不是幹部就寫不進去。改介面時要把 lingling_publish_version 加一。
--- 錯誤代碼：PT409 版本不符、22023 輸入不對（含要撤的不是這首曲目泠靈發的樂譜）、PT404 找不到（PostgREST 依 PTxyz 回 HTTP xyz）、
--- 23505 檔案已有登記、23514 違反分部的規則（見 piece_parts_tree）。
--- 版本 2：create_parts 的每一項可以帶 absorb（要收成分部的現有聲部編號），created_parts 的每一項帶回 absorbed。
+-- 錯誤代碼：PT409 版本不符、22023 輸入不對（含要撤的不是這首曲目泠靈發的樂譜）、PT404 找不到（PostgREST 依 PTxyz 回 HTTP xyz）、23505 檔案已有登記。
 create or replace function public.lingling_publish_version() returns int
-language sql immutable as $$ select 2 $$;
+language sql immutable as $$ select 1 $$;
 
 create or replace function public.lingling_publish(payload jsonb) returns jsonb
 language plpgsql security invoker set search_path = public as $$
@@ -1081,7 +991,6 @@ declare
   piece_created boolean := false;
   ll_path text := '^lingling/' || pid || '/[0-9a-f]{64}-[0-9a-z]{1,32}\.pdf$';  -- 這首曲目的泠靈路徑
   x jsonb; score jsonb; v_part uuid; v_score uuid; n int;
-  i int; v_child uuid; child piece_parts; absorbed jsonb;
   new_parts jsonb := '{}';   -- 這次新建的聲部：名稱 → 編號
   created jsonb := '[]'; added jsonb := '[]'; removed jsonb := '[]'; attached jsonb := '[]';
 begin
@@ -1114,7 +1023,7 @@ begin
             nullif(x->>'section', ''), coalesce((x->>'sort')::int, 0))
     returning id into v_part;
     new_parts := new_parts || jsonb_build_object(x->>'name', v_part);
-    created := created || jsonb_build_object('id', v_part, 'name', x->>'name', 'absorbed', '[]'::jsonb);
+    created := created || jsonb_build_object('id', v_part, 'name', x->>'name');
   end loop;
 
   -- 改現有聲部的人數與聲部組（欄位省略或 null 就不改）
@@ -1146,29 +1055,6 @@ begin
   )
   select coalesce(jsonb_agg(jsonb_build_object('id', id, 'part_id', gone.part_id, 'file_path', file_path)), '[]')
     into removed from gone;
-
-  -- 把現有聲部收成這次新建聲部的分部：在撤掉登記之後（被收的聲部上泠靈的舊登記要先撤掉，分部不能有樂譜）、
-  -- 登記新樂譜之前做。兩層、同曲目、分部無樂譜、有分部的聲部無排人由觸發器擋（23514）
-  for i in 0 .. jsonb_array_length(created) - 1 loop
-    v_part := (created->i->>'id')::uuid;
-    absorbed := '[]';
-    for v_child in select jsonb_array_elements_text(coalesce(payload->'create_parts'->i->'absorb', '[]'))::uuid loop
-      select * into child from piece_parts where id = v_child and piece_id = pid;
-      if not found then
-        raise exception '找不到這首曲目的聲部 %（可能已被刪除）', v_child using errcode = 'PT404';
-      end if;
-      if child.parent_id is not null then
-        raise exception '「%」已經是分部，不能再收進「%」', child.name, created->i->>'name' using errcode = '23514';
-      end if;
-      update piece_parts set parent_id = v_part where id = v_child and piece_id = pid;
-      get diagnostics n = row_count;
-      if n = 0 then
-        raise exception '找不到這首曲目的聲部 %（可能已被刪除，或沒有權限）', v_child using errcode = 'PT404';
-      end if;
-      absorbed := absorbed || to_jsonb(v_child);
-    end loop;
-    created := jsonb_set(created, array[i::text, 'absorbed'], absorbed);
-  end loop;
 
   -- 登記新樂譜：檔案要先傳到 Storage，路徑是泠靈的格式 lingling/<曲目編號>/<SHA-256>-<登記位置>.pdf；
   -- 一份 Storage 檔只給一筆登記（網頁刪樂譜時會連檔一起刪，共用的話會弄壞另一筆）
