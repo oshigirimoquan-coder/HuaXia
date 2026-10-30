@@ -667,7 +667,8 @@ end $$;
 
 -- 出席率統計（目前／整學期）
 -- 晚到／早退：有事先預告（請假系統選了晚到或早退）算 late_weight／early_weight，沒預告算 unexcused_weight
-create or replace function public.attendance_stats(sem uuid)
+-- attendance_calc：內部用的計算（everyone = true 時算所有人），網站不能直接呼叫
+create or replace function public.attendance_calc(sem uuid, everyone boolean)
 returns table (user_id uuid, expected_total int, expected_so_far int, attended numeric,
   present int, late int, early int, excused int, absent int, current_rate numeric, total_rate numeric)
 language plpgsql stable security definer set search_path = public as $$
@@ -690,7 +691,7 @@ begin
     left join attendance a on a.event_id = ev.eid and a.user_id = p.id
     left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
     where p.status = 'active'
-      and (public.is_officer() or p.id = auth.uid() or public.leads_user(p.id))
+      and (everyone or public.is_officer() or p.id = auth.uid() or public.leads_user(p.id))
       and public.is_expected(ev.erow, p.id)
       and coalesce(a.status, '') <> 'na'
   ), w as (
@@ -719,6 +720,41 @@ begin
     case when (exp_now + future) > 0 then round(got / (exp_now + future) * 100, 1) end
   from agg;
 end $$;
+revoke execute on function public.attendance_calc(uuid, boolean) from public, anon, authenticated;
+
+-- 出席率：幹部看全部、組長看自己組、社員只看自己
+create or replace function public.attendance_stats(sem uuid)
+returns table (user_id uuid, expected_total int, expected_so_far int, attended numeric,
+  present int, late int, early int, excused int, absent int, current_rate numeric, total_rate numeric)
+language sql stable security definer set search_path = public as $$
+  select * from public.attendance_calc(sem, false)
+$$;
+
+-- 組內出席平均：每個人看得到自己所在組別的平均（幹部看全部組），看不到個別的人
+create or replace function public.section_attendance(sem uuid)
+returns table (section text, avg_rate numeric, rated int)
+language sql stable security definer set search_path = public as $$
+  select g.sec, round(avg(c.current_rate), 1), count(c.current_rate)::int
+  from unnest(array['吹管','拉弦','彈撥','打擊','低音']) as g(sec)
+  left join (public.attendance_calc(sem, true) c join profiles p on p.id = c.user_id)
+    on g.sec = any(case when cardinality(p.sections) > 0 then p.sections else array[p.section] end)
+  where public.is_officer() or (public.is_insider() and g.sec = any(public.my_sections()))
+  group by g.sec
+$$;
+
+-- 出席率 80% 以上的名單：社內的人都看得到名字，但看不到數字
+create or replace function public.attendance_honor_roll(sem uuid)
+returns table (user_id uuid)
+language sql stable security definer set search_path = public as $$
+  select c.user_id from public.attendance_calc(sem, true) c
+  where public.is_insider() and c.current_rate >= 80
+$$;
+revoke execute on function public.attendance_stats(uuid) from public, anon;
+revoke execute on function public.section_attendance(uuid) from public, anon;
+revoke execute on function public.attendance_honor_roll(uuid) from public, anon;
+grant execute on function public.attendance_stats(uuid) to authenticated;
+grant execute on function public.section_attendance(uuid) to authenticated;
+grant execute on function public.attendance_honor_roll(uuid) to authenticated;
 
 -- 個人出席明細：每次行程的計算後狀態
 create or replace function public.attendance_detail(sem uuid, uid uuid)
@@ -922,11 +958,12 @@ language sql stable security definer set search_path = public as $$
     -- 分譜：排到這個聲部、或排到它任一個分部的人
     or (s.part_id is not null and (public.in_part(s.part_id)
       or exists (select 1 from piece_parts c where c.parent_id = s.part_id and public.in_part(c.id))))
-    -- 總譜：絲竹曲目大家都看得到；大團曲目給組長與這首曲子的聲部長（小老師）
+    -- 總譜：絲竹曲目只給排進這首曲子的人；大團曲目給組長；兩種都給這首曲子的聲部長（小老師）
     or (s.part_id is null and s.section is null and (
       (public.is_active() and exists (select 1 from pieces pc where pc.id = s.piece_id and pc.ensemble = 'sizhu')
-        and (public.is_insider() or public.in_piece(s.piece_id)))
-      or (public.is_active() and public.has_role('leader'))
+        and public.in_piece(s.piece_id))
+      or (public.is_active() and public.has_role('leader')
+        and exists (select 1 from pieces pc where pc.id = s.piece_id and coalesce(pc.ensemble, 'tutti') <> 'sizhu'))
       or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.tutor_id = auth.uid())))
     -- 舊的分組樂譜（相容）
     or (s.part_id is null and s.section is not null and (

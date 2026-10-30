@@ -42,7 +42,10 @@ async function attPage(all) {
     const l = stats.filter((x) => secsOf(state.people.get(x.user_id)).includes(s) && x.current_rate != null);
     return [s, l.length ? l.reduce((a, b) => a + Number(b.current_rate), 0) / l.length : null, l.length];
   });
-  const myDetail = all ? '' : await detail(me());  // 先載完自己的明細，再綁定按鈕（不然正式網站會綁不到）
+  const myDetail = all ? '' : await detail(me());
+  // 出席率 80% 以上的名單：社內的人都看得到名字（看不到數字）
+  const honor = all || !p.insider ? [] : ((await sb.rpc('attendance_honor_roll', { sem: state.semester.id })).data || []).map((r) => r.user_id)
+    .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'zh-Hant'));  // 先載完自己的明細，再綁定按鈕（不然正式網站會綁不到）
   setTimeout(() => {
     $$('[data-rsvp-go]').forEach((b) => (b.onclick = () => toggleAttend(b.dataset.ev, !!b.dataset.rsvpGo)));
     $$('[data-rsvp-leave]').forEach((b) => (b.onclick = () => leaveDialog({ id: b.dataset.ev, title: b.dataset.title }, b.dataset.type ? { type: b.dataset.type, reason: b.dataset.reason } : null)));
@@ -55,7 +58,9 @@ async function attPage(all) {
   const head = all ? pageHead(p.officer ? '全團出席率' : '組員出席率', `${esc(state.semester.name)}・點一列看那個人的每一場紀錄。「目前」只算已點名的場次，「整學期」連同之後的場次一起算。`)
     : pageHead('出席', `${esc(state.semester.name)}・「目前」只算已點名的場次，「整學期」連同之後的場次一起算。沒排到曲目的場次算無曲，不列入。`) +
     `<section class="card me-att"><div class="rings bign">${rateRing(mine?.current_rate ?? null, '目前')}${rateRing(mine?.total_rate ?? null, '整學期')}</div>
-      <div class="me-att-detail"><h2>我的紀錄</h2>${myDetail}</div></section>`;
+      <div class="me-att-detail"><h2>我的紀錄</h2>${myDetail}</div></section>` +
+    (honor.length ? `<section class="card honor"><div class="card-head"><h2>出席率 80% 以上</h2><span class="muted small">${honor.length} 人・依目前已點名的場次</span></div>
+      <div class="chips">${honor.map((id) => chipPerson(id)).join('')}</div></section>` : '');
   if (all && !others.length) return head + empty('還沒有可以顯示的出席率');
   return head +
     (others.length ? `<section class="card">

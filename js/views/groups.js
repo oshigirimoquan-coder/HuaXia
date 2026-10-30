@@ -24,15 +24,22 @@ async function sectionView(sec) {
     .sort((a, b) => (b.roles.includes('leader') - a.roles.includes('leader')) || nameOf(a.id).localeCompare(nameOf(b.id), 'zh-Hant'));
   const leaders = members.filter((u) => u.roles.includes('leader'));
   const nowIso = new Date(Date.now() - 3 * 3600e3).toISOString();
-  const [evs, anns, stats] = await Promise.all([
+  const sem = state.semester && !p.ringerOnly ? state.semester.id : null;
+  const [evs, anns, stats, secAvg, honor] = await Promise.all([
     sb.from('events').select('*').contains('sections', [sec]).gte('starts_at', nowIso).order('starts_at').limit(6),
     sb.from('announcements').select('*').eq('audience', 'section').eq('section', sec).order('created_at', { ascending: false }).limit(5),
-    state.semester && !p.ringerOnly ? sb.rpc('attendance_stats', { sem: state.semester.id }) : { data: [] },
+    sem ? sb.rpc('attendance_stats', { sem }) : { data: [] },
+    sem ? sb.rpc('section_attendance', { sem }) : { data: [] },
+    sem ? sb.rpc('attendance_honor_roll', { sem }) : { data: [] },
   ]);
+  const good = new Set((honor.data || []).map((r) => r.user_id));
   const ids = new Set(members.map((u) => u.id));
   const secStats = (stats.data || []).filter((s) => ids.has(s.user_id));
   const rated = secStats.filter((s) => s.current_rate != null);
-  const avg = rated.length ? rated.reduce((a, b) => a + Number(b.current_rate), 0) / rated.length : null;
+  // 組內平均：資料庫只給自己所在的組（幹部全部）；舊版資料庫沒有這個函式時，幹部改用個別出席率自己算
+  const row = (secAvg.data || []).find((r) => r.section === sec);
+  const avg = row ? (row.avg_rate == null ? null : Number(row.avg_rate)) : (p.officer && rated.length ? rated.reduce((a, b) => a + Number(b.current_rate), 0) / rated.length : null);
+  const showAvg = !!row || p.officer;
   const statOf = new Map(secStats.map((s) => [s.user_id, s]));
   // 出席率：幹部看全部、組長看自己組；一般社員只看得到自己的（資料庫本來就只給這些）
   const canSeeAll = p.officer || (p.leader && mySecs().includes(sec));
@@ -40,7 +47,7 @@ async function sectionView(sec) {
   return `<section class="grp-hero sec-${esc(sec)}"><div>
       <h2>${esc(sec)}組</h2>
       <p class="small muted">${members.length} 位成員${leaders.length ? `・組長 ${leaders.map((u) => esc(nameOf(u.id))).join('、')}` : ''}</p></div>
-      ${canSeeAll && !p.ringerOnly ? `<div class="grp-rate lv-${rateLevel(avg)}"><span>組內出席率</span><b class="mono">${avg == null ? '—' : Math.round(avg)}${avg == null ? '' : '<small>%</small>'}</b></div>` : ''}
+      ${showAvg && !p.ringerOnly ? `<div class="grp-rate lv-${rateLevel(avg)}"><span>組內出席率</span><b class="mono">${avg == null ? '—' : Math.round(avg)}${avg == null ? '' : '<small>%</small>'}</b></div>` : ''}
     </section>
     <div class="grp-grid">
       <section class="card"><div class="card-head"><h2>分部課</h2><a class="link" href="#/events">行事曆</a></div>
@@ -52,7 +59,7 @@ async function sectionView(sec) {
       ${members.length ? `<ul class="grp-people">${members.map((u) => {
         const st = statOf.get(u.id);
         return `<li class="${u.id === me() ? 'me' : ''}">${avatar(u.id, 36)}<div><b>${esc(nameOf(u.id))}</b>${u.roles.includes('leader') ? '<span class="chip gold">組長</span>' : ''}
-          <span class="small muted">${esc(u.instruments || '')}</span></div>${(canSeeAll || u.id === me()) && !p.ringerOnly ? pct(st?.current_rate ?? null) : ''}</li>`;
+          <span class="small muted">${esc(u.instruments || '')}</span>${good.has(u.id) ? '<span class="chip ok good-att">出席 80%↑</span>' : ''}</div>${(canSeeAll || u.id === me()) && !p.ringerOnly ? pct(st?.current_rate ?? null) : ''}</li>`;
       }).join('')}</ul>` : empty('這組還沒有成員', p.admin ? '到頭像選單的「成員」設定每個人的組別。' : '')}
     </section>`;
 }

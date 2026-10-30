@@ -23,7 +23,7 @@ async function editPiece(pc = null) {
     fields: [
       { name: 'title', label: '曲名', required: true, value: pc?.title, full: true },
       { name: 'composer', label: '作曲／編曲', value: pc?.composer },
-      { name: 'ensemble', label: '屬於', type: 'select', value: pc?.ensemble || 'tutti', options: [['tutti', '大團'], ['sizhu', '絲竹']], hint: '絲竹曲目的總譜大家都看得到；大團只有組長和聲部長看得到' },
+      { name: 'ensemble', label: '屬於', type: 'select', value: pc?.ensemble || 'tutti', options: [['tutti', '大團'], ['sizhu', '絲竹']], hint: '絲竹曲目的總譜只有排進這首曲子的人看得到；大團只有組長和聲部長看得到' },
       { name: 'duration_min', label: '時長（分鐘）', type: 'number', step: '0.5', min: 0, value: pc?.duration_min },
       { name: 'notes', label: '備註', type: 'textarea', value: pc?.notes, full: true },
       { name: 'archived', label: '封存', type: 'toggle', text: '不在本學期曲目中（封存）', value: pc?.archived },
@@ -294,7 +294,7 @@ route('/pieces/:id', async ({ id }) => {
     pageHead(pc.title, `${esc(pc.composer || '')}${pc.duration_min ? ` · <span class="mono">${pc.duration_min} 分鐘</span>` : ''}`, p.officer ? '<button class="btn" id="edit-piece">編輯曲目</button>' : '') +
     (pc.notes ? `<p class="note">${esc(pc.notes)}</p>` : '') +
     ((p.officer || full.length || secs.length) ? `<section class="card"><div class="card-head"><h2>樂譜</h2>${p.officer ? '<span class="actions"><button class="btn sm" id="up-full">上傳總譜</button><button class="btn sm pri" id="batch-up">批次上傳</button></span>' : ''}</div>
-      ${p.officer ? `<p class="small muted">用 Ling Ling Suite 拆好的分譜和總譜可以整包丟進「批次上傳」，網站會依檔名對到下面的聲部。${pc.ensemble === 'sizhu' ? '這是絲竹曲目，總譜大家都看得到。' : '這是大團曲目，總譜只有組長和聲部長看得到。'}</p>` : ''}
+      ${p.officer ? `<p class="small muted">用 Ling Ling Suite 拆好的分譜和總譜可以整包丟進「批次上傳」，網站會依檔名對到下面的聲部。${pc.ensemble === 'sizhu' ? '這是絲竹曲目，總譜只有排進這首曲子的人看得到。' : '這是大團曲目，總譜只有組長和聲部長看得到。'}</p>` : ''}
       <div class="sec-row"><div class="sec-name"><b class="small">總譜</b></div><div class="scores">${full.length ? scoreLinks(null) : '<span class="muted small">尚未上傳</span>'}</div></div>
       ${secs.map((x) => `<div class="sec-row"><div class="sec-name">${sectionChip(x)}</div><div class="scores">${scoreLinks(null, x)}</div></div>`).join('')}
     </section>` : '') +

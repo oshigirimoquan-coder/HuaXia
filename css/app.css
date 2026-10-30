@@ -636,3 +636,5 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 /* 出席明細：直接回覆出席或請假 */
 .rsvp { display: flex; gap: 6px; flex-wrap: nowrap; }
 .att-tbl .btn.sm { white-space: nowrap; }
+.grp-people .good-att { margin-left: 6px; font-size: .72rem; }
+.honor .chips { display: flex; flex-wrap: wrap; gap: 8px; }
