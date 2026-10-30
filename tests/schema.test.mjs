@@ -447,7 +447,7 @@ test('分部：替已排 8 人的聲部加第一個分部，人移到分部後�
 // ---------- 泠靈發譜函式（docs/LINGLING.md） ----------
 const P3 = '22222222-2222-2222-2222-222222222223', P4 = '22222222-2222-2222-2222-222222222224';
 const llPath = (piece, c, slot = 'score') => `lingling/${piece}/${c.repeat(64)}-${slot}.pdf`;
-const publish = (uid, payload) => as(uid, `select lingling_publish('${JSON.stringify({ version: 2, ...payload }).replace(/'/g, "''")}'::jsonb) as r`);
+const publish = (uid, payload) => as(uid, `select lingling_publish('${JSON.stringify({ version: 3, ...payload }).replace(/'/g, "''")}'::jsonb) as r`);
 test('公告照片：只能上傳到自己的資料夾；看得到那則公告的人才看得到照片；最多 9 張', async () => {
   await db.exec('alter table storage.objects enable row level security');
   try {
@@ -534,12 +534,12 @@ test('頭像：只能上傳到自己的資料夾，不能刪別人的', async ()
 
 const upload = (...paths) => db.exec(`insert into storage.objects (bucket_id, name) values ${paths.map((p) => `('scores','${p}')`).join(',')}`);
 
-test('泠靈發譜：版本查詢回傳 2，舊版（1）的泠靈被擋；登入的人才能呼叫，版本不符時整個不做', async () => {
-  assert.equal((await as(A, `select lingling_publish_version() as v`)).rows[0].v, 2);
-  assert.equal((await as(B, `select lingling_publish_version() as v`)).rows[0].v, 2);
+test('泠靈發譜：版本查詢回傳 3，舊版（2）的泠靈被擋；登入的人才能呼叫，版本不符時整個不做', async () => {
+  assert.equal((await as(A, `select lingling_publish_version() as v`)).rows[0].v, 3);
+  assert.equal((await as(B, `select lingling_publish_version() as v`)).rows[0].v, 3);
   assert.match((await as('', `set role anon; select lingling_publish_version()`)).error, /permission denied for function lingling_publish_version$/);
   assert.match((await as('', `set role anon; select lingling_publish('{}'::jsonb)`)).error, /permission denied for function lingling_publish$/);
-  const r = await as(A, `select lingling_publish('{"version":1,"piece_id":"${P3}","new_piece":{"title":"新曲"}}'::jsonb)`);
+  const r = await as(A, `select lingling_publish('{"version":2,"piece_id":"${P3}","new_piece":{"title":"新曲"}}'::jsonb)`);
   assert.match(r.error, /介面版本/);
   assert.equal(r.code, 'PT409');
   assert.equal((await as(A, `select 1 from pieces where id='${P3}'`)).rows.length, 0);
@@ -556,7 +556,7 @@ test('泠靈發譜：新建曲目、聲部、樂譜與掛場次一次完成；�
   const { rows, error } = await publish(A, payload);
   assert.equal(error, undefined);
   const out = rows[0].r;
-  assert.equal(out.version, 2);
+  assert.equal(out.version, 3);
   assert.equal(out.piece_id, P3);
   assert.equal(out.piece_created, true);
   assert.deepEqual(out.created_parts.map((p) => [p.name, p.absorbed]), [['二胡 I', []], ['琵琶', []]]);
@@ -584,8 +584,21 @@ test('泠靈發譜：改人數與聲部組、取代樂譜；已經不在的登�
   });
   assert.equal(error, undefined);
   assert.deepEqual(rows[0].r.removed_scores, [{ id: old, part_id: erhu, file_path: llPath(P3, 'a') }]);
-  assert.deepEqual((await as(A, `select needed, needed_min, section from piece_parts where id='${erhu}'`)).rows[0], { needed: '4', needed_min: 4, section: '拉弦' });
+  // 沒給 sort：順序不動
+  assert.deepEqual((await as(A, `select needed, needed_min, section, sort from piece_parts where id='${erhu}'`)).rows[0], { needed: '4', needed_min: 4, section: '拉弦', sort: 1 });
   assert.deepEqual((await as(A, `select file_path from scores where part_id='${erhu}'`)).rows.map((x) => x.file_path), [llPath(P3, 'c')]);
+});
+
+test('泠靈發譜：update_parts 給了 sort 才改順序（照泠靈的樂器表重排），只給 sort 時人數與聲部組不動', async () => {
+  const order = async () => (await as(A, `select name from piece_parts where piece_id='${P3}' and parent_id is null order by sort`)).rows.map((x) => x.name);
+  assert.deepEqual(await order(), ['二胡 I', '琵琶']);
+  const id = async (name) => (await as(A, `select id from piece_parts where piece_id='${P3}' and name='${name}'`)).rows[0].id;
+  const erhu = await id('二胡 I'), pipa = await id('琵琶');
+  const { error } = await publish(A, { piece_id: P3, update_parts: [{ id: pipa, sort: 1 }, { id: erhu, sort: 2, needed: null }] });
+  assert.equal(error, undefined);
+  assert.deepEqual(await order(), ['琵琶', '二胡 I']);
+  assert.deepEqual((await as(A, `select needed, needed_min, section from piece_parts where id='${erhu}'`)).rows[0], { needed: '4', needed_min: 4, section: '拉弦' });
+  assert.deepEqual((await as(A, `select needed, section from piece_parts where id='${pipa}'`)).rows[0], { needed: '2↑', section: '彈撥' });
 });
 
 test('泠靈發譜：只撤這首曲目泠靈發的登記，要撤別人放的或別首曲目的就整個不做', async () => {

@@ -2,7 +2,7 @@
 
 **結論**：譜務用的桌面程式「泠靈」（Ling Ling Suite，<https://github.com/Suikann/ling-ling-suite>）會以幹部自己的 Discord 帳號登入，直接把曲目、聲部、人數與分譜放上 HuaXia。下面列出的資料表、欄位、函式與 Storage 路徑是泠靈和 HuaXia 之間的約定：**改這些東西之前先看這份文件**；改了之後 `npm test` 裡「泠靈發譜」開頭的測試沒過，就是泠靈會壞。改不可避免時，照最後一節通知泠靈的維護者。
 
-泠靈那一側的測試用的假 HuaXia 照這份文件實作，所以這份文件就是雙方的介面契約。依據的版本：HuaXia `main` 20b2cef 加上分部與發譜函式介面版本 2 的修改、Supabase Auth v2.197.0。
+泠靈那一側的測試用的假 HuaXia 照這份文件實作，所以這份文件就是雙方的介面契約。依據的版本：HuaXia `main` 5f10298 加上發譜函式介面版本 3 的修改、Supabase Auth v2.197.0。
 
 ## 泠靈怎麼連 HuaXia
 
@@ -21,7 +21,7 @@
 | `profiles` | `id`、`status`、`created_at` | 讀。登入後不是幹部時，依帳號狀態（待核准、停用）與建立時間判斷是不是這次登入才多建的帳號 |
 | `user_roles` | — | 不直接讀，經 `is_officer()` |
 | `pieces` | `id`、`title`、`composer`、`duration_min`、`ensemble`、`archived` | 讀沒封存的曲目讓譜務挑。新建時寫 `id`（泠靈先產生）、`title`、`composer`、`duration_min`（分鐘，0.5 為一級，同網頁表單）、`ensemble`（`tutti`／`sizhu`）。不改現有曲目、不封存、不刪曲目 |
-| `piece_parts` | `id`、`piece_id`、`name`、`needed`、`needed_min`、`section`、`sort`、`tutor_id`、`note`、`parent_id` | 讀這幾首曲目的聲部，以名稱對到泠靈的聲部；`parent_id` 有值的是分部（見下一節），只在沒有 `parent_id` 的聲部之間配對。新建時寫 `name`、`needed`、`needed_min`、`section`、`sort`；現有聲部只改 `needed`、`needed_min`、`section`。`needed` 是記法 `6`、`6-8`、`2↑`，`needed_min` 是最少人數；`section` 只寫五組之一，空白交給觸發器 `guess_section`。不改名稱；`tutor_id`、`note` 只讀不寫：撤回時其中一個有值就算有人在網頁上設定過那個聲部，不刪。撤回時也比對 `name` 與那次新建時的名稱，被改過名的同樣不刪。發譜**永遠不刪聲部**。`parent_id` 不直接寫：發譜經函式的 `absorb` 收分部，撤回時經 REST 改回 null（見後文）；分部的 `section` 跟著所屬聲部，泠靈不寫分部的人數與聲部組 |
+| `piece_parts` | `id`、`piece_id`、`name`、`needed`、`needed_min`、`section`、`sort`、`tutor_id`、`note`、`parent_id` | 讀這幾首曲目的聲部，以名稱對到泠靈的聲部；`parent_id` 有值的是分部（見下一節），只在沒有 `parent_id` 的聲部之間配對。新建時寫 `name`、`needed`、`needed_min`、`section`、`sort`；現有聲部只改 `needed`、`needed_min`、`section`、`sort`。`sort` 是網頁排聲部的順序，泠靈重發時照它的樂器表重排這首曲目沒有 `parent_id` 的聲部（泠靈沒對到的聲部跟著它原本的前一個聲部），分部的 `sort` 不寫（分部收在所屬聲部底下顯示，不看 `sort` 決定歸屬）。`needed` 是記法 `6`、`6-8`、`2↑`，`needed_min` 是最少人數；`section` 只寫五組之一，空白交給觸發器 `guess_section`。不改名稱；`tutor_id`、`note` 只讀不寫：撤回時其中一個有值就算有人在網頁上設定過那個聲部，不刪。撤回時也比對 `name` 與那次新建時的名稱，被改過名的同樣不刪。發譜**永遠不刪聲部**。`parent_id` 不直接寫：發譜經函式的 `absorb` 收分部，撤回時經 REST 改回 null（見後文）；分部的 `section` 跟著所屬聲部，泠靈不寫分部的人數與聲部組 |
 | `part_assignments` | `id`、`part_id` | 讀。撤回時判斷那次新建的聲部有沒有排人（依 `id` 排序分頁）；泠靈不寫。`part_id` 不會指向有分部的聲部（資料庫擋，`23514`） |
 | `practice_reports` | `id`、`part_id` | 只讀不寫。撤回時判斷那次新建的聲部有沒有練習回報指著它（刪聲部會把 `part_id` 設成 null，回報就對不回聲部），有的話不刪；依 `id` 排序分頁，幹部經 `can_see_report` 看得到全部 |
 | `scores` | `id`、`piece_id`、`part_id`、`title`、`file_path`、`section`、`created_at` | 讀這幾首曲目的樂譜，依 `file_path` 分出哪份是泠靈發的。`part_id` 為 null 且 `section` 為 null 是總譜；泠靈登記的 `section` 一律為 null。登記新樂譜、撤掉被取代的登記；網頁上傳的（不是泠靈路徑的）只在收回時刪。`part_id` 不會指向分部（資料庫擋，`23514`）：分部的團員讀所屬聲部的分譜 |
@@ -61,7 +61,7 @@
 
 ### `lingling_publish_version() returns int`
 
-目前回傳 **2**（版本 2 起 `create_parts` 可以收分部）。泠靈開發譜預覽前先呼叫（`POST /rest/v1/rpc/lingling_publish_version`，本體 `{}`）；函式不存在或版本不是泠靈要的，泠靈就停用發譜。
+目前回傳 **3**（版本 2 起 `create_parts` 可以收分部，版本 3 起 `update_parts` 可以改 `sort`）。泠靈開發譜預覽前先呼叫（`POST /rest/v1/rpc/lingling_publish_version`，本體 `{}`）；函式不存在或版本不是泠靈要的，泠靈就停用發譜。
 
 ### `lingling_publish(payload jsonb) returns jsonb`
 
@@ -71,14 +71,14 @@
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "piece_id": "曲目編號；新建時是泠靈先產生的編號",
   "new_piece": null,
   "create_parts": [
     {"name": "二胡", "needed": "6-8", "needed_min": 6, "section": "", "sort": 3, "absorb": ["要收成分部的現有聲部編號"]}
   ],
   "update_parts": [
-    {"id": "聲部編號", "needed": "4", "needed_min": 4, "section": "拉弦"}
+    {"id": "聲部編號", "needed": "4", "needed_min": 4, "section": "拉弦", "sort": 2}
   ],
   "add_scores": [
     {"part_id": "現有聲部編號", "title": "琵琶", "file_path": "lingling/<曲目編號>/<sha256>-<登記位置>.pdf"},
@@ -95,7 +95,7 @@
 | `version` | 必須等於 `lingling_publish_version()`，否則整個不做 |
 | `new_piece` | `null`：`piece_id` 是現有曲目。物件 `{"title", "composer", "duration_min", "ensemble"}`（`title` 必填；`composer` 省略為空白、`duration_min` 可為 `null`、`ensemble` 省略為 `tutti`）：以 `piece_id` 新建；這個編號已經存在就沿用、不改它的欄位（重跑不會多建一首） |
 | `create_parts` | 同一次不能有兩個同名的；`section` 空白時由觸發器依名稱判斷。`absorb` 可省略（等於空的）：這幾個現有聲部收成這個新聲部的分部，排的人留在原處、`section` 改成新聲部的。每個都必須屬於這首曲目（否則 `PT404`）、沒有所屬聲部、本身沒有分部、（撤掉這次的 `remove_scores` 之後）沒有樂譜登記（否則 `23514`）；同一個編號在這次出現兩次，第二次算已經是分部 |
-| `update_parts` | 聲部必須屬於這首曲目；`needed`、`needed_min`、`section` 省略或 `null` 就不改，`section` 給空字串等於交給觸發器重新判斷 |
+| `update_parts` | 聲部必須屬於這首曲目；`needed`、`needed_min`、`section`、`sort` 省略或 `null` 就不改，`section` 給空字串等於交給觸發器重新判斷 |
 | `add_scores` | `part_id`（現有聲部）與 `new_part`（這次 `create_parts` 裡的名稱）最多給一個，都不給是總譜；`part_id` 不能是分部，包括這次剛收的（`23514`）；`file_path` 必須是這首曲目的泠靈路徑、檔案已經在 Storage，而且（撤掉這次的 `remove_scores` 之後）沒有任何樂譜登記指著它 |
 | `remove_scores` | 只撤這首曲目上泠靈發的登記（`file_path` 是這首曲目的泠靈路徑 `lingling/<piece_id>/…`）；有一筆是網頁上傳的、別人放的或別首曲目的，整個不做（錯誤 `22023`）；已經不在的略過 |
 | `attach_events` | 已經掛著的略過 |
@@ -106,7 +106,7 @@
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "piece_id": "...",
   "piece_created": true,
   "created_parts": [{"id": "新聲部編號", "name": "二胡", "absorbed": ["這次收成它的分部的聲部編號"]}],
@@ -140,6 +140,7 @@
 ## 改了會影響泠靈的事
 
 - 上面表格裡的資料表或欄位改名、刪除、改型別或改意義（例如 `needed` 的記法、`section` 的五組、`ensemble` 的值）。
+- `piece_parts.sort` 的意義（網頁依它由小到大排聲部；分部收在所屬聲部底下，不看 `sort`）。
 - 分部的規則：層數、`parent_id` 的意義、分部能不能有樂譜、有分部的聲部能不能排人、刪聲部連分部一起刪，以及違反時的錯誤代碼 `23514`。
 - `is_officer()` 的名稱或意義；RLS 讓幹部不能寫上面這些表。
 - Storage bucket 名稱、`scores_*` 的權限，或網頁上傳改用 `lingling/` 開頭的路徑。
