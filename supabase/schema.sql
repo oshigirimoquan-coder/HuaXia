@@ -958,11 +958,12 @@ language sql stable security definer set search_path = public as $$
     -- 分譜：排到這個聲部、或排到它任一個分部的人
     or (s.part_id is not null and (public.in_part(s.part_id)
       or exists (select 1 from piece_parts c where c.parent_id = s.part_id and public.in_part(c.id))))
-    -- 總譜：絲竹曲目大家都看得到；大團曲目給組長與這首曲子的聲部長（小老師）
+    -- 總譜：絲竹曲目只給排進這首曲子的人；大團曲目給組長；兩種都給這首曲子的聲部長（小老師）
     or (s.part_id is null and s.section is null and (
       (public.is_active() and exists (select 1 from pieces pc where pc.id = s.piece_id and pc.ensemble = 'sizhu')
-        and (public.is_insider() or public.in_piece(s.piece_id)))
-      or (public.is_active() and public.has_role('leader'))
+        and public.in_piece(s.piece_id))
+      or (public.is_active() and public.has_role('leader')
+        and exists (select 1 from pieces pc where pc.id = s.piece_id and coalesce(pc.ensemble, 'tutti') <> 'sizhu'))
       or exists (select 1 from piece_parts pp where pp.piece_id = s.piece_id and pp.tutor_id = auth.uid())))
     -- 舊的分組樂譜（相容）
     or (s.part_id is null and s.section is not null and (

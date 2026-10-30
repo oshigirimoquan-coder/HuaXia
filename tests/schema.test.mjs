@@ -299,15 +299,18 @@ test('排人：組長可以排自己組的聲部，不能排別組；座位表�
   assert.equal((await as(B, `select piece_id from seating_charts`)).rows.length, 1);
 });
 
-test('總譜：絲竹曲目大家都看得到；大團曲目只有組長、聲部長看得到', async () => {
+test('總譜：絲竹曲目只有排進那首曲子的人看得到；大團曲目只有組長、聲部長看得到', async () => {
   const L = '00000000-0000-0000-0000-0000000000b2'; // 前面測試建立的拉弦組長
   await as(A, `insert into scores (piece_id,title) values ('${P1}','P1總譜'),('${P2}','P2總譜'); update pieces set ensemble='sizhu' where id='${P2}'`);
   const t = async (u) => (await as(u, `select title from scores where part_id is null and section is null order by title`)).rows.map((r) => r.title);
-  assert.deepEqual(await t(B), ['P2總譜']);            // 一般社員：只看到絲竹曲目的總譜
-  assert.deepEqual(await t(R), ['P2總譜']);            // 槍手有參與 P2
-  assert.deepEqual(await t(L), ['P1總譜', 'P2總譜']);  // 組長
+  assert.deepEqual(await t(B), []);                    // 一般社員沒排進 P2（絲竹）：看不到
+  assert.deepEqual(await t(R), ['P2總譜']);            // 槍手排進 P2
+  assert.deepEqual(await t(L), ['P1總譜']);            // 組長：大團的看得到，沒排進的絲竹曲目看不到
+  await as(A, `insert into part_assignments (part_id,user_id) values ('${PT2}','${B}')`);
+  assert.deepEqual(await t(B), ['P2總譜']);            // 排進 P2 之後看得到
+  await as(A, `delete from part_assignments where part_id='${PT2}' and user_id='${B}'`);
   await as(A, `update piece_parts set tutor_id='${B}' where id='${PT1}'`);
-  assert.deepEqual(await t(B), ['P1總譜', 'P2總譜']);  // 當上 P1 的聲部長
+  assert.deepEqual(await t(B), ['P1總譜']);            // 當上 P1 的聲部長
 });
 
 // ---------- 分部：聲部底下可以再分排人的單位（piece_parts.parent_id），只分兩層 ----------
