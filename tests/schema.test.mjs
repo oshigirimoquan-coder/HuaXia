@@ -725,3 +725,24 @@ test('泠靈發譜：不是幹部會被 RLS 擋下，什麼都沒寫進去', asy
   assert.equal((await as(A, `select needed from piece_parts where id='${PT1}'`)).rows[0].needed, '1');
   assert.equal((await as(A, `select 1 from event_pieces where piece_id='${P1}' and event_id='${E(4)}'`)).rows.length, 0);
 });
+
+test('組內出席平均與 80% 名單：社員只看到自己組的平均和名單上的名字，看不到別人的數字；計算函式不能直接呼叫', async () => {
+  const all = (await as(A, `select user_id, current_rate from attendance_stats('${S}')`)).rows;
+  // 社員：只拿得到自己所在組別的平均
+  const mySecs = (await as(B, `select my_sections() as s`)).rows[0].s;
+  const secs = (await as(B, `select * from section_attendance('${S}')`)).rows;
+  assert.ok(secs.length >= 1);
+  assert.ok(secs.every((r) => mySecs.includes(r.section)));
+  // 幹部：五組都拿得到
+  assert.equal((await as(A, `select * from section_attendance('${S}')`)).rows.length, 5);
+  // 80% 名單：只有 user_id，和幹部算出來的一致
+  const roll = (await as(B, `select * from attendance_honor_roll('${S}')`)).rows;
+  assert.deepEqual(Object.keys(roll[0] || { user_id: 1 }), ['user_id']);
+  const want = all.filter((r) => r.current_rate != null && Number(r.current_rate) >= 80).map((r) => r.user_id).sort();
+  assert.deepEqual(roll.map((r) => r.user_id).sort(), want);
+  // 社員自己的出席率表還是只有自己
+  assert.deepEqual((await as(B, `select user_id from attendance_stats('${S}')`)).rows.map((r) => r.user_id), [B]);
+  // 不是社內的人（只有槍手身分）拿不到名單；任何登入的人都不能直接呼叫計算函式
+  assert.equal((await as(R, `select * from attendance_honor_roll('${S}')`)).rows.length, 0);
+  assert.ok((await as(B, `select * from attendance_calc('${S}', true)`)).error);
+});
