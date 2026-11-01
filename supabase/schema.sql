@@ -612,7 +612,7 @@ $$;
 -- 某人是否「應出席」某次行程（自動判斷無曲）
 create or replace function public.is_expected(e public.events, uid uuid) returns boolean
 language plpgsql stable security definer set search_path = public as $$
-declare rules jsonb; is_ringer_only boolean; k text;
+declare rules jsonb; is_ringer_only boolean; is_alumni_only boolean; k text;
   has_pieces boolean := exists (select 1 from event_pieces where event_id = e.id);
 begin
   if not e.counts_attendance then return false; end if;
@@ -620,12 +620,11 @@ begin
   select value into rules from settings where key = 'attendance_rules';
   is_ringer_only := not exists (select 1 from user_roles where user_id = uid
     and role in ('admin','officer','leader','member','newbie'));
-  -- 只有校友身分：排進當天曲目編制才算
-  if is_ringer_only and exists (select 1 from user_roles where user_id = uid and role = 'alumni') then
-    return has_pieces and exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
-      join part_assignments pa on pa.part_id = pp.id where ep.event_id = e.id and pa.user_id = uid);
-  end if;
-  if is_ringer_only and not coalesce((rules->>'count_ringers')::boolean, false) then return false; end if;
+  -- 只有校友身分：要排進當天曲目編制，而且還要符合行程類型（例如分部課要是那一組的人）
+  is_alumni_only := is_ringer_only and exists (select 1 from user_roles where user_id = uid and role = 'alumni');
+  if is_alumni_only and not (has_pieces and exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
+      join part_assignments pa on pa.part_id = pp.id where ep.event_id = e.id and pa.user_id = uid)) then return false; end if;
+  if is_ringer_only and not is_alumni_only and not coalesce((rules->>'count_ringers')::boolean, false) then return false; end if;
   -- 複選類型：符合其中任一種就算應出席
   foreach k in array (case when cardinality(e.kinds) > 0 then e.kinds else array[e.kind] end) loop
     if k = 'officer' then

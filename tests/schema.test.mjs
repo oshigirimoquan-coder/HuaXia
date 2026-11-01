@@ -269,6 +269,16 @@ test('校友：看得到社內行程；只有排進當天編制才算應出席',
   assert.equal(await exp(9), false);  // 有曲目但沒排到他
   await as(A, `insert into part_assignments (part_id,user_id) values ('${PT1}','${AL}')`);
   assert.equal(await exp(9), true);   // 排進編制就算
+  const EA = '55555555-5555-5555-5555-5555555555a8';
+  // 分部課也指定了曲目：排進編制但不是那一組，不算；是那一組才算
+  await as(A, `insert into events (id,semester_id,kinds,sections,title,starts_at,ends_at,calendar_key) values
+    ('${EA}','${S}',array['sectional'],array['拉弦'],'胡琴分部（泰芙努特）','2026-11-04 19:30+08','2026-11-04 21:30+08','tutti');
+    insert into event_pieces values ('${EA}','${P1}'); update profiles set sections=array['彈撥'] where id='${AL}'`);
+  const expA = async () => (await as(A, `select public.is_expected(e, '${AL}') as ok from events e where e.id='${EA}'`)).rows[0].ok;
+  assert.equal(await expA(), false);
+  await as(A, `update profiles set sections=array['彈撥','拉弦'] where id='${AL}'`);
+  assert.equal(await expA(), true);
+  await as(A, `update profiles set sections=array['彈撥'] where id='${AL}'`);
 });
 
 test('分組樂譜：社員看自己那組；槍手看排到的曲子裡同組的譜', async () => {
