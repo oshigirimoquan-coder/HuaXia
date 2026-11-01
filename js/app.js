@@ -135,11 +135,37 @@ function authScreen(mode = 'login', animate = true) {
 
 function waitingScreen() {
   const inactive = state.profile?.status === 'inactive';
-  $('#app').innerHTML = `<div class="auth"><div class="auth-card">${authHead(false)}
+  const u = state.profile || {};
+  // 等待核准時先填基本資料：管理員核准前就認得出是誰
+  $('#app').innerHTML = `<div class="auth${inactive ? '' : ' join'}"><div class="auth-card">${authHead(false)}
     <h1>${inactive ? '帳號已停用' : '已送出加入申請'}</h1>
-    <p class="muted">${inactive ? '如果這是誤會，請聯絡社長或管理員。' : `${esc(state.profile?.display_name || '')}，管理員核准後就能使用。可以先到 DC 跟幹部說一聲。`}</p>
+    <p class="muted">${inactive ? '如果這是誤會，請聯絡社長或管理員。' : '管理員核准後就能使用。先填一下你的名字和資料，幹部比較認得出你。'}</p>
+    ${inactive ? '' : `<form id="wait-form" class="auth-box auth-form">
+      <label>顯示名稱（大家在網站上看到的名字）<input name="display_name" required maxlength="40" value="${esc(u.display_name || '')}"></label>
+      <label>本名<input name="real_name" maxlength="40" value="${esc(u.real_name || '')}" placeholder="例：王小明"></label>
+      <label>系級<input name="grade" maxlength="40" value="${esc(u.grade || '')}" placeholder="例：金融一"></label>
+      <label>樂器<input name="instruments" maxlength="60" value="${esc(u.instruments || '')}" placeholder="例：二胡、琵琶；還沒學過也可以寫想學的"></label>
+      <label>學校（外校才填）<input name="school" maxlength="40" value="${esc(u.school || '')}"></label>
+      <label>手機（只有幹部看得到）<input name="phone" maxlength="30" inputmode="tel"></label>
+      <label>自我介紹（選填）<textarea name="bio" rows="3" maxlength="500">${esc(u.bio || '')}</textarea></label>
+      <button class="btn pri">儲存</button>
+    </form>`}
     <div class="row"><button class="btn" onclick="location.reload()">重新整理</button><button class="btn ghost" id="out">登出</button></div></div></div>`;
   $('#out').onclick = () => sb.auth.signOut();
+  const f = $('#wait-form');
+  if (!f) return;
+  sb.from('profile_private').select('phone').eq('user_id', me()).maybeSingle().then(({ data }) => { if (data?.phone) f.phone.value = data.phone; });
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(f));
+    if (!v.display_name.trim()) return toast('請填顯示名稱', 'bad');
+    const row = { display_name: v.display_name.trim(), real_name: v.real_name.trim(), grade: v.grade.trim(), instruments: v.instruments.trim(), school: v.school.trim(), bio: v.bio.trim() };
+    const a = await sb.from('profiles').update(row).eq('id', me());
+    const b = await sb.from('profile_private').update({ phone: v.phone.trim() }).eq('user_id', me());
+    if (a.error || b.error) return toast(errText(a.error || b.error), 'bad');
+    state.profile = { ...state.profile, ...row };
+    toast('已儲存，管理員核准時看得到', 'ok');
+  };
 }
 
 function setupScreen() {
