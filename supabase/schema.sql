@@ -1101,14 +1101,15 @@ create policy photos_delete on storage.objects for delete using (
 -- =====================================================================
 -- 泠靈（Ling Ling Suite）發譜函式（介面與依賴的欄位見 docs/LINGLING.md）
 -- =====================================================================
--- 泠靈把一首曲目的發譜（新建曲目、建聲部並把現有聲部收成它的分部、改人數與聲部組、登記新樂譜、撤掉舊樂譜的登記、掛場次）
+-- 泠靈把一首曲目的發譜（新建曲目、建聲部並把現有聲部收成它的分部、改人數、聲部組與順序、登記新樂譜、撤掉舊樂譜的登記、掛場次）
 -- 一次交給這個函式：任何一步失敗，整次呼叫都不生效。以呼叫者身分執行（security invoker），
 -- 上面的 RLS 照常生效，不是幹部就寫不進去。改介面時要把 lingling_publish_version 加一。
 -- 錯誤代碼：PT409 版本不符、22023 輸入不對（含要撤的不是這首曲目泠靈發的樂譜）、PT404 找不到（PostgREST 依 PTxyz 回 HTTP xyz）、
 -- 23505 檔案已有登記、23514 違反分部的規則（見 piece_parts_tree）。
 -- 版本 2：create_parts 的每一項可以帶 absorb（要收成分部的現有聲部編號），created_parts 的每一項帶回 absorbed。
+-- 版本 3：update_parts 的每一項可以帶 sort（照泠靈的樂器表重排現有聲部的順序）。
 create or replace function public.lingling_publish_version() returns int
-language sql immutable as $$ select 2 $$;
+language sql immutable as $$ select 3 $$;
 
 create or replace function public.lingling_publish(payload jsonb) returns jsonb
 language plpgsql security invoker set search_path = public as $$
@@ -1154,12 +1155,13 @@ begin
     created := created || jsonb_build_object('id', v_part, 'name', x->>'name', 'absorbed', '[]'::jsonb);
   end loop;
 
-  -- 改現有聲部的人數與聲部組（欄位省略或 null 就不改）
+  -- 改現有聲部的人數、聲部組與順序（欄位省略或 null 就不改）
   for x in select * from jsonb_array_elements(coalesce(payload->'update_parts', '[]')) loop
     update piece_parts set
       needed = coalesce(x->>'needed', needed),
       needed_min = coalesce((x->>'needed_min')::int, needed_min),
-      section = case when x->>'section' is null then section else nullif(x->>'section', '') end
+      section = case when x->>'section' is null then section else nullif(x->>'section', '') end,
+      sort = coalesce((x->>'sort')::int, sort)
     where id = (x->>'id')::uuid and piece_id = pid;
     get diagnostics n = row_count;
     if n = 0 then
