@@ -34,7 +34,8 @@ async function attPage(all) {
   const { data } = await sb.rpc('attendance_stats', { sem: state.semester.id });
   const stats = data || [];
   const mine = stats.find((s) => s.user_id === me());
-  const others = stats.filter((s) => s.user_id !== me());
+  // 出席明細頁：自己的已經在最上面，表格只列別人；出席率總表：連自己一起列
+  const others = all ? stats : stats.filter((s) => s.user_id !== me());
   const secF = sessionStorage.getItem('attSec') || '';
   const shown = others.filter((s) => !secF || secsOf(state.people.get(s.user_id)).includes(secF))
     .sort((a, b) => (a.current_rate ?? 999) - (b.current_rate ?? 999));
@@ -68,7 +69,7 @@ async function attPage(all) {
       ${p.officer ? `<div class="sec-bars">${bySec.map(([s, r, n]) => `<div class="sec-bar"><span>${sectionChip(s)}</span><div class="bar"><i class="rate-${rateLevel(r)}" style="width:${r ?? 0}%"></i></div><span class="mono small">${r == null ? '—' : Math.round(r) + '%'}</span></div>`).join('')}</div>
       <div class="seg wrap"><button data-sec="" aria-pressed="${!secF}">全部</button>${SECTIONS.map((s) => `<button data-sec="${s}" aria-pressed="${secF === s}">${s}</button>`).join('')}</div>` : ''}
       <div class="tbl-wrap"><table class="att-tbl click"><thead><tr><th>成員</th><th>目前</th><th>整學期</th><th>出席</th><th>晚到</th><th>早退</th><th>請假</th><th>缺席</th></tr></thead><tbody>
-      ${shown.map((s) => `<tr data-who="${s.user_id}"><td>${chipPerson(s.user_id)}</td><td>${pct(s.current_rate)}</td><td>${pct(s.total_rate)}</td>
+      ${shown.map((s) => `<tr data-who="${s.user_id}" class="${s.user_id === me() ? 'me' : ''}"><td>${chipPerson(s.user_id)}${s.user_id === me() ? ' <span class="muted small">（我）</span>' : ''}</td><td>${pct(s.current_rate)}</td><td>${pct(s.total_rate)}</td>
         <td class="mono">${s.present}</td><td class="mono">${s.late || ''}</td><td class="mono">${s.early || ''}</td><td class="mono">${s.excused || ''}</td><td class="mono">${s.absent || ''}</td></tr>`).join('')}
       </tbody></table></div><p class="small muted">點一列看那個人的明細。依目前出席率由低到高排序。</p></section>
       <section class="card" id="who-detail" hidden></section>` : '');
