@@ -109,12 +109,17 @@ async function assign(part, asg, ringers) {
   render();
 }
 
+// Safari、iPhone、LINE／IG 內建瀏覽器會擋「等一下才開的新分頁」，所以點下去當下就先開空白分頁，拿到網址再導過去；
+// 連空白分頁都被擋（或內建瀏覽器不支援分頁）時，直接在目前這頁打開
 async function openScore(s) {
   if (!s.file_path) return;
   if (DEMO) return toast('示範模式不提供下載');
+  const w = window.open('', '_blank');
+  if (w) { try { w.opener = null; w.document.title = '樂譜載入中…'; w.document.body.textContent = '樂譜載入中…'; } catch { } }
   const { data, error } = await sb.storage.from('scores').createSignedUrl(s.file_path, 3600);
-  if (error) return toast('無法開啟樂譜：你可能沒有這個聲部的權限', 'bad');
-  window.open(data.signedUrl, '_blank', 'noopener');
+  if (error) { w?.close(); return toast('無法開啟樂譜：你可能沒有這個聲部的權限', 'bad'); }
+  if (w && !w.closed) w.location.href = data.signedUrl;
+  else location.href = data.signedUrl;
 }
 
 const MAX = 20 * 1024 * 1024;
