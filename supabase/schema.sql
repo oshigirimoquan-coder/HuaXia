@@ -792,6 +792,18 @@ language sql stable security definer set search_path = public, auth as $$
 $$;
 revoke execute on function public.discord_ids(uuid[]) from public, anon, authenticated;
 
+-- 還沒回覆的人：應該到、但沒按出席、也沒請假／晚到／早退、也還沒被點名（給每晚提醒用；一般登入者不能呼叫）
+create or replace function public.unanswered(eid uuid)
+returns table (user_id uuid, sections text[], display_name text)
+language sql stable security definer set search_path = public as $$
+  select p.id, case when cardinality(p.sections) > 0 then p.sections else array_remove(array[p.section], null) end, p.display_name
+  from events e cross join profiles p
+  where e.id = eid and p.status = 'active' and public.is_expected(e, p.id)
+    and not exists (select 1 from leave_requests l where l.event_id = e.id and l.user_id = p.id)
+    and not exists (select 1 from attendance a where a.event_id = e.id and a.user_id = p.id)
+$$;
+revoke execute on function public.unanswered(uuid) from public, anon, authenticated;
+
 -- 練習回報可見範圍
 create or replace function public.can_see_report(rid uuid) returns boolean
 language sql stable security definer set search_path = public as $$

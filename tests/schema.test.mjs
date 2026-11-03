@@ -772,3 +772,17 @@ test('組內出席平均與 80% 名單：社員只看到自己組的平均和名
   assert.equal((await as(R, `select * from attendance_honor_roll('${S}')`)).rows.length, 0);
   assert.ok((await as(B, `select * from attendance_calc('${S}', true)`)).error);
 });
+
+test('每晚提醒：列出應到但還沒回覆的人；按了出席或請假就不列；一般登入者不能呼叫', async () => {
+  const EU = '55555555-5555-5555-5555-5555555555c1';
+  await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+    ('${EU}','${S}',array['tutti'],'大團（提醒測試）','2026-12-08 19:30+08','2026-12-08 21:30+08','tutti')`);
+  const who = async () => (await db.query(`select user_id from public.unanswered('${EU}')`)).rows.map((r) => r.user_id);
+  assert.ok((await who()).includes(B));                       // 沒指定曲目的大團：社員 B 應到、還沒回覆
+  await as(B, `insert into leave_requests (event_id,type,reason) values ('${EU}','attend','')`);
+  assert.ok(!(await who()).includes(B));                      // 按了出席就不列
+  await as(B, `delete from leave_requests where event_id='${EU}'`);
+  await as(B, `insert into leave_requests (event_id,type,reason) values ('${EU}','late','【20:00 到】家教')`);
+  assert.ok(!(await who()).includes(B));                      // 晚到也算回覆過
+  assert.ok((await as(B, `select * from unanswered('${EU}')`)).error);  // 一般登入者不能呼叫
+});
