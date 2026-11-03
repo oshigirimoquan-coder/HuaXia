@@ -112,19 +112,26 @@ export async function toggleAttend(evId, on) {
   render();
 }
 
+// 晚到／早退要填時間：存在事由最前面，例如「【20:15 到】家教」，點名和紀錄上都看得到
+const TIME_TAG = /^【(\d{1,2}:\d{2}) (到|走)】\s*/;
 export async function leaveDialog(ev, cur) {
+  const m = (cur?.reason || '').match(TIME_TAG);
   const v = await formDialog({
     title: `${cur ? '修改' : ''}請假：${ev.title}`,
     danger: cur ? '撤回' : null,
     submit: '送出',
+    switchBy: 'type',
     fields: [
       { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL) },
-      { name: 'reason', label: '事由', type: 'textarea', value: cur?.reason, required: true, rows: 3, placeholder: '例：期中考、家教卡到、會晚 30 分鐘' },
+      { name: 'at', label: '幾點到／幾點走', type: 'time', value: m?.[1] || '', only: ['late', 'early'], hint: '晚到填預計幾點到，早退填預計幾點走' },
+      { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, placeholder: '例：期中考、家教卡到' },
     ],
+    validate: (x) => (x.type === 'late' || x.type === 'early') && !x.at ? (x.type === 'late' ? '請填預計幾點到' : '請填預計幾點走') : null,
   });
   if (!v) return;
+  const reason = v.type === 'late' || v.type === 'early' ? `【${v.at} ${v.type === 'late' ? '到' : '走'}】${v.reason}` : v.reason;
   if (v.__danger) await run(() => sb.from('leave_requests').delete().eq('event_id', ev.id).eq('user_id', me()), '已撤回');
-  else await run(() => sb.from('leave_requests').upsert({ event_id: ev.id, user_id: me(), type: v.type, reason: v.reason }), '已送出');
+  else await run(() => sb.from('leave_requests').upsert({ event_id: ev.id, user_id: me(), type: v.type, reason }), '已送出');
   render();
 }
 
