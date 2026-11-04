@@ -13,3 +13,13 @@ select cron.schedule('huaxia-daily-reminder', '0 12 * * *', $$
     body := '{}'::jsonb)
 $$);
 -- 12:00 UTC = 20:00 台北
+
+-- 每天中午 12:00（台北）：今天下午／晚上的練習，還沒回覆要不要來的人在組別頻道被 @
+select cron.unschedule('huaxia-noon-reminder') where exists (select 1 from cron.job where jobname = 'huaxia-noon-reminder');
+select cron.schedule('huaxia-noon-reminder', '0 4 * * *', $$
+  select net.http_post(
+    url := 'https://<PROJECT_REF>.supabase.co/functions/v1/daily-reminder',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', '<CRON_SECRET>'),
+    body := '{"mode":"noon"}'::jsonb)
+$$);
+-- 04:00 UTC = 12:00 台北
