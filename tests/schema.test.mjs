@@ -786,3 +786,34 @@ test('每晚提醒：列出應到但還沒回覆的人；按了出席或請假�
   assert.ok(!(await who()).includes(B));                      // 晚到也算回覆過
   assert.ok((await as(B, `select * from unanswered('${EU}')`)).error);  // 一般登入者不能呼叫
 });
+
+test('病假：不列入出席率（應到少一場）；事假照規則算；點名也可以直接標病假', async () => {
+  const st = async () => (await as(A, `select * from attendance_stats('${S}')`)).rows.find((r) => r.user_id === B);
+  const before = await st();                                        // B 在 E2 請的是事假
+  assert.ok((await as(B, `update leave_requests set type='sick' where event_id='${E(2)}'`)).error);  // 病假沒附證明：擋下
+  await as(B, `update leave_requests set type='sick', proof_dm=true where event_id='${E(2)}'`);
+  const sick = await st();
+  assert.equal(sick.expected_so_far, before.expected_so_far - 1);   // 病假那場不算應到
+  assert.equal(sick.expected_total, before.expected_total - 1);
+  assert.equal(sick.excused, before.excused);                       // 「請假」欄還是算一次
+  assert.ok(Number(sick.current_rate) > Number(before.current_rate));
+  await as(B, `update leave_requests set type='leave', proof_dm=false where event_id='${E(2)}'`);
+  assert.equal((await st()).expected_so_far, before.expected_so_far);
+  // 沒在網站請假，點名時幹部直接標病假也一樣
+  await as(A, `insert into attendance (event_id,user_id,status) values ('${E(2)}','${B}','sick')`);
+  assert.equal((await st()).expected_so_far, before.expected_so_far - 1);
+  await as(A, `delete from attendance where event_id='${E(2)}' and user_id='${B}'`);
+});
+
+test('病假證明：只能傳到自己的資料夾；本人和幹部看得到，其他社員看不到', async () => {
+  await db.exec('alter table storage.objects enable row level security');
+  try {
+    const f = `${B}/proof.jpg`;
+    assert.ok((await as(B, `insert into storage.objects (bucket_id,name) values ('leave-proofs','${R}/x.jpg')`)).error);
+    assert.ok(!(await as(B, `insert into storage.objects (bucket_id,name) values ('leave-proofs','${f}')`)).error);
+    const see = async (u) => (await as(u, `select name from storage.objects where bucket_id='leave-proofs' and name='${f}'`)).rows.length;
+    assert.equal(await see(B), 1);
+    assert.equal(await see(A), 1);   // 幹部（管理員）
+    assert.equal(await see(R), 0);   // 其他人
+  } finally { await db.exec('alter table storage.objects disable row level security'); }
+});

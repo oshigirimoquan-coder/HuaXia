@@ -396,7 +396,12 @@ create table if not exists public.leave_requests (
 
 -- 「出席」確認也存在這張表（type = 'attend'）：事先按了會到，點名時預設帶「出席」
 alter table public.leave_requests drop constraint if exists leave_requests_type_check;
-alter table public.leave_requests add constraint leave_requests_type_check check (type in ('leave','late','early','attend'));
+alter table public.leave_requests add constraint leave_requests_type_check check (type in ('leave','late','early','attend','sick'));
+-- 病假要附證明：上傳照片（Storage「leave-proofs」，只有本人和幹部看得到），或勾「已私訊團長」
+alter table public.leave_requests add column if not exists proof_paths text[] not null default '{}';
+alter table public.leave_requests add column if not exists proof_dm boolean not null default false;
+alter table public.leave_requests drop constraint if exists leave_requests_sick_proof;
+alter table public.leave_requests add constraint leave_requests_sick_proof check (type <> 'sick' or proof_dm or cardinality(proof_paths) > 0);
 
 create table if not exists public.attendance (
   event_id uuid references public.events(id) on delete cascade,
@@ -407,6 +412,9 @@ create table if not exists public.attendance (
   marked_at timestamptz not null default now(),
   primary key (event_id, user_id)
 );
+-- 病假（sick）：不算缺席，不列入出席率；事假（excused）照出席率規則
+alter table public.attendance drop constraint if exists attendance_status_check;
+alter table public.attendance add constraint attendance_status_check check (status in ('present','late','early','absent','excused','sick','na'));
 
 -- ---------------------------------------------------------------------
 -- 7. 公告、任務
@@ -685,7 +693,7 @@ begin
   ), cells as (
     select p.id as uid, ev.marked, l.type as lt,
       coalesce(a.status, case when ev.marked then
-        case when l.type = 'leave' then 'excused' else 'absent' end end) as st
+        case when l.type = 'leave' then 'excused' when l.type = 'sick' then 'sick' else 'absent' end end) as st
     from profiles p cross join ev
     left join attendance a on a.event_id = ev.eid and a.user_id = p.id
     left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
@@ -703,18 +711,20 @@ begin
   ), agg as (
     select uid,
       count(*)::int as exp_total,
-      count(*) filter (where marked and not (exclude_excused and st = 'excused'))::int as exp_now,
+      count(*) filter (where marked and st is distinct from 'sick' and not (exclude_excused and st = 'excused'))::int as exp_now,
       coalesce(sum(wt), 0) as got,
       count(*) filter (where st = 'present')::int as n_present,
       count(*) filter (where st = 'late')::int as n_late,
       count(*) filter (where st = 'early')::int as n_early,
       count(*) filter (where st = 'excused')::int as n_excused,
+      count(*) filter (where st = 'sick' or (not marked and st is null and lt = 'sick'))::int as n_sick,
       count(*) filter (where st = 'absent')::int as n_absent,
-      count(*) filter (where not marked and not (exclude_excused and st = 'excused'))::int as future
+      count(*) filter (where not marked and st is distinct from 'sick' and lt is distinct from 'sick' and not (exclude_excused and st = 'excused'))::int as future
     from w group by uid
   )
-  select uid, exp_total - case when exclude_excused then n_excused else 0 end, exp_now, got,
-    n_present, n_late, n_early, n_excused, n_absent,
+  -- 「請假」欄 = 事假 + 病假；病假不列入應到
+  select uid, exp_total - case when exclude_excused then n_excused else 0 end - n_sick, exp_now, got,
+    n_present, n_late, n_early, n_excused + n_sick, n_absent,
     case when exp_now > 0 then round(got / exp_now * 100, 1) end,
     case when (exp_now + future) > 0 then round(got / (exp_now + future) * 100, 1) end
   from agg;
@@ -765,7 +775,7 @@ begin
     select e.id, e.starts_at, e.kind, e.title, public.is_expected(e, uid),
       exists (select 1 from attendance x where x.event_id = e.id),
       coalesce(a.status, case when exists (select 1 from attendance x where x.event_id = e.id)
-        and public.is_expected(e, uid) then case when l.type = 'leave' then 'excused' else 'absent' end end),
+        and public.is_expected(e, uid) then case when l.type = 'leave' then 'excused' when l.type = 'sick' then 'sick' else 'absent' end end),
       a.note, l.type, l.reason
     from events e
     left join attendance a on a.event_id = e.id and a.user_id = uid
@@ -1083,6 +1093,18 @@ create policy scores_read on storage.objects for select using (
     select 1 from public.scores s where s.file_path = storage.objects.name and public.can_read_score(s))));
 create policy scores_write on storage.objects for insert with check (bucket_id = 'scores' and public.is_officer());
 create policy scores_delete on storage.objects for delete using (bucket_id = 'scores' and public.is_officer());
+
+-- 病假證明：私人 bucket，本人上傳到自己的資料夾（<user id>/…）；本人與幹部看得到；本人或幹部可以刪
+insert into storage.buckets (id, name, public) values ('leave-proofs', 'leave-proofs', false) on conflict (id) do nothing;
+drop policy if exists proofs_read on storage.objects;
+drop policy if exists proofs_write on storage.objects;
+drop policy if exists proofs_delete on storage.objects;
+create policy proofs_read on storage.objects for select using (
+  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.is_officer()));
+create policy proofs_write on storage.objects for insert with check (
+  bucket_id = 'leave-proofs' and auth.uid() is not null and split_part(name, '/', 1) = auth.uid()::text);
+create policy proofs_delete on storage.objects for delete using (
+  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.is_officer()));
 
 -- 頭像：公開讀取（只是大頭貼）；只能上傳、取代、刪除自己資料夾（<user id>/…）裡的檔案
 insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict (id) do nothing;

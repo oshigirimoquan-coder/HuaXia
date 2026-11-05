@@ -26,7 +26,7 @@ export async function photoUrls(paths) {
   return new Map((data || []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
 }
 // 縮成最長邊 1600px 的 JPEG，省空間也比較快
-function shrink(file, max = 1600) {
+export function shrink(file, max = 1600) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file); const img = new Image();
     img.onload = () => {
