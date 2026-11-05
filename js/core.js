@@ -172,7 +172,7 @@ export function formDialog({ title, fields, submit = '儲存', danger = null, sw
       let ctl;
       if (f.type === 'textarea') ctl = `<textarea id="${id}" name="${f.name}" ${req} rows="${f.rows || 4}">${esc(v)}</textarea>`;
       else if (f.type === 'select') ctl = `<select id="${id}" name="${f.name}" ${req}>${f.options.map(([k, l]) => `<option value="${esc(k)}" ${String(k) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-      else if (f.type === 'checks') ctl = `<div class="checks">${f.options.map(([k, l]) => `<label class="check"><input type="checkbox" name="${f.name}" value="${esc(k)}" ${(v || []).includes(k) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('') || '<span class="muted">沒有可選的項目</span>'}</div>`;
+      else if (f.type === 'checks') ctl = `<div class="checks">${f.options.map(([k, l]) => k === null ? `<span class="checks-h">${esc(l)}</span>` : `<label class="check"><input type="checkbox" name="${f.name}" value="${esc(k)}" ${(v || []).includes(k) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('') || '<span class="muted">沒有可選的項目</span>'}</div>`;
       else if (f.type === 'photos') ctl = `<div class="photo-field" data-photos="${f.name}">
         <div class="photo-grid">${(v || []).map((u, i) => `<div class="ph-item" data-keep="${i}"><img src="${esc(u.url || '')}" alt=""><button type="button" class="ph-x" aria-label="移除這張">✕</button></div>`).join('')}</div>
         <label class="btn sm ph-add"><input type="file" accept="image/*" multiple hidden>＋ 加照片</label></div>`;

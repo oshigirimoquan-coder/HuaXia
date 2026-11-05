@@ -92,13 +92,23 @@ async function saveFirstDivisi(cx, part, row, parentId) {
 
 async function assign(part, asg, ringers) {
   const cur = asg.filter((a) => a.part_id === part.id);
-  const people = activePeople().filter((p) => p.roles.some((r) => r !== 'teacher')).map((p) => [p.id, `${nameOf(p.id)}${secsOf(p).length ? `（${secsOf(p).join('、')}）` : ''}`]);
-  const rs = ringers.filter((r) => r.status === 'accepted' && !r.user_id).map((r) => ['r:' + r.id, `${r.name}（槍手${r.school ? '・' + r.school : ''}）`]);
+  // 依組別分區：這個聲部所屬的組放最前面；在兩組的人放在這個聲部的組（不是的話放第一組），括號註明另一組
+  const partSec = part.section || guessSection(part.name);
+  const order = [partSec, ...SECTIONS.filter((s) => s !== partSec)].filter(Boolean);
+  const groups = new Map([...order, '未分組'].map((s) => [s, []]));
+  for (const p of activePeople().filter((x) => x.roles.some((r) => r !== 'teacher'))) {
+    const secs = secsOf(p); const home = secs.includes(partSec) ? partSec : (secs[0] || '未分組');
+    const others = secs.filter((s) => s !== home);
+    (groups.get(home) || groups.get('未分組')).push([p.id, `${nameOf(p.id)}${others.length ? `（也在${others.join('、')}）` : ''}`]);
+  }
+  const people = [...groups].filter(([, l]) => l.length).flatMap(([s, l]) => [[null, s === '未分組' ? s : `${s}組${s === partSec ? '（這個聲部）' : ''}`], ...l]);
+  const rsList = ringers.filter((r) => r.status === 'accepted' && !r.user_id).map((r) => ['r:' + r.id, `${r.name}${r.school ? '（' + r.school + '）' : ''}`]);
+  const rs = rsList.length ? [[null, '槍手（還沒註冊帳號）'], ...rsList] : [];
   const v = await formDialog({
     title: `排人：${part.name}`, submit: '儲存',
     fields: [{ name: 'who', label: `需要 ${part.needed} 人`, type: 'checks', full: true,
       value: cur.map((a) => a.user_id || 'r:' + a.ringer_id), options: [...people, ...rs],
-      hint: '槍手註冊帳號後會出現在上面的成員裡；還沒註冊的槍手列在最後。' }],
+      hint: '依組別分區；槍手註冊帳號後會出現在他的組別裡，還沒註冊的列在最後。' }],
   });
   if (!v) return;
   await run(async () => {
