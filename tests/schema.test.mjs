@@ -817,3 +817,15 @@ test('病假證明：只能傳到自己的資料夾；本人和幹部看得到�
     assert.equal(await see(R), 0);   // 其他人
   } finally { await db.exec('alter table storage.objects disable row level security'); }
 });
+
+test('公假：一定要勾已私訊團長；跟病假一樣不列入出席率', async () => {
+  const st = async () => (await as(A, `select * from attendance_stats('${S}')`)).rows.find((r) => r.user_id === B);
+  const before = await st();
+  assert.ok((await as(B, `update leave_requests set type='official' where event_id='${E(2)}'`)).error);   // 沒私訊團長：擋下
+  await as(B, `update leave_requests set type='official', proof_dm=true where event_id='${E(2)}'`);
+  assert.equal((await st()).expected_so_far, before.expected_so_far - 1);
+  await as(B, `update leave_requests set type='leave', proof_dm=false where event_id='${E(2)}'`);
+  await as(A, `insert into attendance (event_id,user_id,status) values ('${E(2)}','${B}','official')`);   // 點名直接標公假
+  assert.equal((await st()).expected_so_far, before.expected_so_far - 1);
+  await as(A, `delete from attendance where event_id='${E(2)}' and user_id='${B}'`);
+});
