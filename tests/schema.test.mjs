@@ -859,3 +859,17 @@ test('分部課有指定曲目：只有那一組、而且排進這些曲目的�
   assert.equal(await exp(ES, C), false);   // C：拉弦，但沒排進 P1
   assert.equal(await exp(EN, C), true);    // 沒指定曲目：整組都要到
 });
+
+test('總彩、公演有指定曲目：只有排進這些曲目的人要到', async () => {
+  const ED = '55555555-5555-5555-5555-5555555555e4', EC = '55555555-5555-5555-5555-5555555555e5';
+  const C = '00000000-0000-0000-0000-0000000000e3';   // 拉弦社員，沒排進 P1
+  await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+      ('${ED}','${S}',array['dress'],'總彩','2026-12-10 13:00+08','2026-12-10 18:00+08','tutti'),
+      ('${EC}','${S}',array['concert'],'公演','2026-12-11 18:00+08','2026-12-11 21:00+08','tutti');
+    insert into event_pieces values ('${ED}','${P1}'),('${EC}','${P1}')`);
+  const exp = async (eid, uid) => (await as(A, `select public.is_expected(e, '${uid}') as ok from events e where e.id='${eid}'`)).rows[0].ok;
+  for (const e of [ED, EC]) {
+    assert.equal(await exp(e, B), true);    // 排在 P1
+    assert.equal(await exp(e, C), false);   // 沒排進 P1
+  }
+});
