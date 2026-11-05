@@ -639,7 +639,11 @@ begin
     if k = 'officer' then
       if exists (select 1 from user_roles where user_id = uid and role in ('admin','officer')) then return true; end if;
     elsif k = 'sectional' then
-      if exists (select 1 from profiles where id = uid and (case when cardinality(sections) > 0 then sections else array[section] end) && (case when cardinality(e.sections) > 0 then e.sections else array[e.section] end)) then return true; end if;
+      -- 分部課：要是那一組的人；有指定這次練習的曲目時，還要排進這些曲目的編制
+      if exists (select 1 from profiles where id = uid and (case when cardinality(sections) > 0 then sections else array[section] end) && (case when cardinality(e.sections) > 0 then e.sections else array[e.section] end))
+        and (not has_pieces or exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
+          join part_assignments pa on pa.part_id = pp.id left join ringers r on r.id = pa.ringer_id
+          where ep.event_id = e.id and (pa.user_id = uid or r.user_id = uid))) then return true; end if;
     elsif k = 'class' then
       if exists (select 1 from class_students where class_id = e.class_id and user_id = uid) then return true; end if;
     elsif has_pieces then

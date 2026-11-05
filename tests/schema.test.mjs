@@ -844,3 +844,18 @@ test('每場出席率：幹部看得到每一場的應到、事先回覆與點�
   assert.ok(f.expected >= 1 && f.said_late === 1 && f.no_reply === f.expected - 1);
   assert.equal((await as(B, `select * from event_rates('${S}')`)).rows.length, 0);
 });
+
+test('分部課有指定曲目：只有那一組、而且排進這些曲目的人要到；沒指定曲目就整組都要到', async () => {
+  const ES = '55555555-5555-5555-5555-5555555555e1', EN = '55555555-5555-5555-5555-5555555555e2';
+  const C = '00000000-0000-0000-0000-0000000000e3';   // 拉弦社員，沒排進 P1
+  await db.exec(`insert into auth.users values ('${C}','c@x','{}')`);
+  await as(A, `update profiles set status='active', sections=array['拉弦'] where id='${C}'; insert into user_roles values ('${C}','member');
+    insert into events (id,semester_id,kinds,sections,title,starts_at,ends_at,calendar_key) values
+      ('${ES}','${S}',array['sectional'],array['拉弦'],'拉弦分部（泰芙努特）','2026-12-20 10:00+08','2026-12-20 12:00+08','tutti'),
+      ('${EN}','${S}',array['sectional'],array['拉弦'],'拉弦分部（沒指定曲目）','2026-12-21 10:00+08','2026-12-21 12:00+08','tutti');
+    insert into event_pieces values ('${ES}','${P1}')`);
+  const exp = async (eid, uid) => (await as(A, `select public.is_expected(e, '${uid}') as ok from events e where e.id='${eid}'`)).rows[0].ok;
+  assert.equal(await exp(ES, B), true);    // B：拉弦，排在 P1 的二胡I
+  assert.equal(await exp(ES, C), false);   // C：拉弦，但沒排進 P1
+  assert.equal(await exp(EN, C), true);    // 沒指定曲目：整組都要到
+});
