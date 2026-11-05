@@ -114,7 +114,7 @@ route('/settings', async () => {
         <label>有事先預告的晚到，算幾次出席<input name="late" type="number" step="0.5" min="0" max="1" value="${rules.late_weight ?? 1}"></label>
         <label>有事先預告的早退，算幾次出席<input name="early" type="number" step="0.5" min="0" max="1" value="${rules.early_weight ?? 1}"></label>
         <label>沒預告的晚到或早退，算幾次出席<input name="unexcused" type="number" step="0.5" min="0" max="1" value="${rules.unexcused_weight ?? 0.5}"></label>
-        <label>請假的場次<select name="excused"><option value="absent" ${rules.excused_mode !== 'exclude' ? 'selected' : ''}>算缺席（列入分母）</option><option value="exclude" ${rules.excused_mode === 'exclude' ? 'selected' : ''}>不列入計算</option></select></label>
+        <label>事假的場次（病假一律不列入）<select name="excused"><option value="absent" ${rules.excused_mode !== 'exclude' ? 'selected' : ''}>算缺席（列入分母）</option><option value="exclude" ${rules.excused_mode === 'exclude' ? 'selected' : ''}>不列入計算</option></select></label>
         <label class="check"><input name="ringers" type="checkbox" ${rules.count_ringers ? 'checked' : ''}><span>槍手也計算出席率</span></label>
         <button class="btn">儲存規則</button>
       </form><p class="small muted">1 = 算一次完整出席，0.5 = 算半次，0 = 不算。「事先預告」指本人在行程頁用請假功能選了晚到或早退。沒排到當天曲目的人自動算無曲，不列入計算。修改後所有人的出席率會立刻重新計算。</p></section>

@@ -23,7 +23,7 @@ export function forMe(e, mine = false) {
 export function eventCard(e, { leave } = {}) {
   const d = daysFromToday(e.starts_at);
   const t = twParts(e.starts_at);
-  const flag = leave ? `<span class="chip ${leave.type === 'leave' ? 'bad' : 'warn'}">已${LEAVE_LABEL[leave.type]}</span>`
+  const flag = leave ? `<span class="chip ${['leave', 'sick'].includes(leave.type) ? 'bad' : 'warn'}">已${LEAVE_LABEL[leave.type]}</span>`
     : d === 0 ? '<span class="chip warn">今天</span>' : d === 1 ? '<span class="chip">明天</span>' : '';
   return `<a class="ev-card kind-${e.kind} ${d < 0 ? 'past' : ''}" href="#/events/${e.id}">
     <div class="ev-date"><b>${t.month}/${t.day}</b><span>週${twWeekday(e.starts_at)}</span></div>
@@ -122,7 +122,7 @@ export async function leaveDialog(ev, cur) {
     submit: '送出',
     switchBy: 'type',
     fields: [
-      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL) },
+      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假不列入出席率；事假依社團規定計算' },
       { name: 'at', label: '幾點到／幾點走', type: 'time', value: m?.[1] || '', only: ['late', 'early'], hint: '晚到填預計幾點到，早退填預計幾點走' },
       { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, placeholder: '例：期中考、家教卡到' },
     ],
@@ -260,7 +260,7 @@ route('/events/:id', async ({ id }) => {
         <h2>我的狀態</h2>
         ${mine?.status ? `<p><span class="att att-${mine.status}">${ATT_LABEL[mine.status]}</span></p>`
           : expectedMe === false ? '<p><span class="att att-na">無曲</span> 這次沒有排到你的曲目，不用到。</p>'
-          : myLeave ? `<p><span class="chip ${myLeave.type === 'leave' ? 'bad' : 'warn'}">已${LEAVE_LABEL[myLeave.type]}</span> ${esc(myLeave.reason)}</p>`
+          : myLeave ? `<p><span class="chip ${['leave', 'sick'].includes(myLeave.type) ? 'bad' : 'warn'}">已${LEAVE_LABEL[myLeave.type]}</span> ${esc(myLeave.reason)}</p>`
           : confirmed ? '<p><span class="chip ok">已確認出席</span></p>'
           : '<p class="muted">預計出席・還沒確認</p>'}
         ${!past && expectedMe !== false && !mine?.status ? `<div class="row-start">${myLeave ? '' : `<button class="btn ${confirmed ? '' : 'pri'}" id="attend-btn">${confirmed ? '取消確認' : '出席'}</button>`}
@@ -269,10 +269,10 @@ route('/events/:id', async ({ id }) => {
     </div>` +
     (canRoll ? `<section class="card">
       <div class="card-head"><h2>點名 <span class="muted small">應到 ${exp.length} 人${yes ? `・已確認出席 ${yes} 人` : ''}</span></h2>
-        <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
+        <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'sick', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
         <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
       <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。</p>
-      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${r.leave_type === 'leave' ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}</div>`).join('')}</div>` : ''}
+      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';
         return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${r.expected ? '' : ' <span class="chip">非應到</span>'}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>
