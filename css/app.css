@@ -587,7 +587,7 @@ input.pick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); 
 .demo-as { border-top: 1px solid var(--line); padding-top: 6px; }
 .me-sheet { max-height: calc(100dvh - 90px); overflow-y: auto; }
 .row-start { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.ok-t { color: var(--ok); }
+.ok-t { color: var(--ok); } .warn-t { color: var(--bad); font-weight: 600; }
 .hero .btn.line.ok { border-color: var(--ok); color: var(--ok); }
 
 /* 教學班成員（公告 › 教學班） */
@@ -640,3 +640,4 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 .att-tbl .btn.sm { white-space: nowrap; }
 .grp-people .good-att { margin-left: 6px; font-size: .72rem; }
 .honor .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ev-rate { font-size: 14px; margin: 0 0 10px; }

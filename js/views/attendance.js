@@ -1,6 +1,6 @@
 import { secsOf } from '../core.js';
 import { sb, state, me, route, esc, pageHead, empty, fmtDate, chipPerson, nameOf, sectionChip, render, $, $$ } from '../core.js';
-import { ATT_LABEL, KIND_LABEL, LEAVE_LABEL, SECTIONS, rateLevel } from '../logic.js';
+import { ATT_LABEL, KIND_LABEL, LEAVE_LABEL, SECTIONS, rateLevel, replyLine } from '../logic.js';
 import { rateRing } from './home.js';
 import { toggleAttend, leaveDialog } from './events.js';
 
@@ -47,7 +47,10 @@ async function attPage(all) {
   // 出席率 80% 以上的名單：社內的人都看得到名字（看不到數字）
   const honor = all || !p.insider ? [] : ((await sb.rpc('attendance_honor_roll', { sem: state.semester.id })).data || []).map((r) => r.user_id)
     .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'zh-Hant'));  // 先載完自己的明細，再綁定按鈕（不然正式網站會綁不到）
+  // 每場出席率要在綁定按鈕之前載完（不然正式網站會綁不到）
+  const evRates = all && p.officer ? ((await sb.rpc('event_rates', { sem: state.semester.id })).data || []) : [];
   setTimeout(() => {
+    $$('[data-ev-go]').forEach((tr) => (tr.onclick = () => { location.hash = '#/events/' + tr.dataset.evGo; }));
     $$('[data-rsvp-go]').forEach((b) => (b.onclick = () => toggleAttend(b.dataset.ev, !!b.dataset.rsvpGo)));
     $$('[data-rsvp-leave]').forEach((b) => (b.onclick = () => leaveDialog({ id: b.dataset.ev, title: b.dataset.title }, b.dataset.type ? { type: b.dataset.type, reason: b.dataset.reason } : null)));
     $$('[data-sec]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('attSec', b.dataset.sec); render(); }));
@@ -62,8 +65,14 @@ async function attPage(all) {
       <div class="me-att-detail"><h2>我的紀錄</h2>${myDetail}</div></section>` +
     (honor.length ? `<section class="card honor"><div class="card-head"><h2>出席率 80% 以上</h2><span class="muted small">${honor.length} 人・依目前已點名的場次</span></div>
       <div class="chips">${honor.map((id) => chipPerson(id)).join('')}</div></section>` : '');
-  if (all && !others.length) return head + empty('還沒有可以顯示的出席率');
-  return head +
+  // 每一場的出席（幹部）：事先回覆的狀況、點名後的出席率
+  const evCard = evRates.length ? `<section class="card"><div class="card-head"><h2>每場出席率</h2><span class="muted small">點一列到那場的點名頁</span></div>
+    <div class="tbl-wrap"><table class="att-tbl click"><thead><tr><th>日期</th><th>行程</th><th>應到</th><th>事先回覆</th><th>出席率</th></tr></thead><tbody>
+    ${evRates.map((r) => `<tr data-ev-go="${r.event_id}"><td class="mono nowrap">${fmtDate(r.starts_at)}</td><td>${esc(r.title)}</td><td class="mono">${r.expected}</td>
+      <td class="small">${replyLine(r)}</td><td>${r.marked ? pct(r.rate) : '<span class="muted small">未點名</span>'}</td></tr>`).join('')}
+    </tbody></table></div><p class="small muted">應到不含病假、公假、無曲；出席率依出席率規則折算晚到早退。</p></section>` : '';
+  if (all && !others.length) return head + evCard + empty('還沒有可以顯示的出席率');
+  return head + evCard +
     (others.length ? `<section class="card">
       <div class="card-head"><h2>${p.officer ? '全團' : '組員'}出席率</h2><span class="muted small">晚到／早退有預告算 ${rules.late_weight ?? 1} 次、沒預告算 ${rules.unexcused_weight ?? 0.5} 次・事假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}・病假、公假不列入</span></div>
       ${p.officer ? `<div class="sec-bars">${bySec.map(([s, r, n]) => `<div class="sec-bar"><span>${sectionChip(s)}</span><div class="bar"><i class="rate-${rateLevel(r)}" style="width:${r ?? 0}%"></i></div><span class="mono small">${r == null ? '—' : Math.round(r) + '%'}</span></div>`).join('')}</div>

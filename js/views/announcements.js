@@ -80,7 +80,7 @@ export const catLabel = (a) => CATS[catOf(a)]?.label || '公告';
 export const SHARE_CATS = Object.keys(CATS).filter((k) => CATS[k].open);
 
 // 對象「絲竹」保留，但不再 @全體絲竹成員（mention_all 一律 false）
-const AUDIENCE = { all: '全體（含槍手）', insiders: '全體社員', sizhu: '絲竹', section: '某一組', officers: '幹部', newbies: '新生', ringers: '槍手' };
+const AUDIENCE = { all: '全體（含槍手）', insiders: '全體社員', sizhu: '絲竹', section: '某一組', officers: '幹部', newbies: '教學班', ringers: '槍手' };
 const DEFAULT_AUD = { performance: 'all', tutti: 'all', sizhu: 'sizhu', class: 'newbies', alumni: 'insiders' };
 
 export async function sizhuRoster() {

@@ -1,7 +1,7 @@
 import { secsOf, mySecs } from '../core.js';
 import { sb, state, me, route, go, esc, run, toast, formDialog, armDelete, pageHead, empty, fmtDate, fmtTime, fmtRange, chipPerson, nameOf, sectionChip, render, $, $$, DEMO } from '../core.js';
 import { shrink } from './announcements.js';
-import { KIND_LABEL, LEAVE_LABEL, ATT_LABEL, SECTIONS, sectionsOf, isAttend, eventDefaults, kindsDefaults, kindsLabel, twParts, twWeekday, twToIso, daysFromToday, defaultRollStatus } from '../logic.js';
+import { KIND_LABEL, LEAVE_LABEL, ATT_LABEL, SECTIONS, sectionsOf, isAttend, eventDefaults, kindsDefaults, kindsLabel, twParts, twWeekday, twToIso, daysFromToday, defaultRollStatus, replyLine, rateLevel } from '../logic.js';
 
 export async function invokeFn(name, body) {
   if (DEMO) return { ok: true };
@@ -259,6 +259,8 @@ route('/events/:id', async ({ id }) => {
   const myLeave = confirmed ? null : myRow;
   const canRoll = p.officer || p.leader;
   const roster = (await sb.rpc('event_roster', { eid: id })).data || [];
+  // 這場的事先回覆與出席率（幹部）
+  const rateRow = canRoll && ev.semester_id ? ((await sb.rpc('event_rates', { sem: ev.semester_id })).data || []).find((r) => r.event_id === id) : null;
   // 病假證明（只有幹部、組長讀得到別人的）
   const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official'].includes(r.leave_type))
     ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official'])).data || []).map((x) => [x.user_id, x]) : []);
@@ -318,6 +320,7 @@ route('/events/:id', async ({ id }) => {
       <div class="card-head"><h2>點名 <span class="muted small">應到 ${exp.length} 人${yes ? `・已確認出席 ${yes} 人` : ''}</span></h2>
         <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'sick', 'official', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
         <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
+      ${rateRow ? `<p class="ev-rate">事先回覆：${replyLine(rateRow)}${rateRow.marked && rateRow.rate != null ? `　<span class="rate rate-${rateLevel(Number(rateRow.rate))}">本場出席率 <b class="mono">${Math.round(rateRow.rate)}%</b></span>` : ''}</p>` : ''}
       <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。病假要附證明、公假要私訊團長，不符合的可以改標「事假」。</p>
       ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick', 'official'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${['sick', 'official'].includes(r.leave_type) ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {

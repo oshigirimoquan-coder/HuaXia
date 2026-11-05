@@ -766,6 +766,56 @@ grant execute on function public.attendance_stats(uuid) to authenticated;
 grant execute on function public.section_attendance(uuid) to authenticated;
 grant execute on function public.attendance_honor_roll(uuid) to authenticated;
 
+-- 每一場的出席：事先回覆（出席／請假／晚到早退／沒回覆）與點名後的出席率；幹部看得到，每晚提醒（後端）也會用
+-- 應到：排除病假、公假、無曲（事假依規則）；出席率 = 實到（晚到早退依規則折算）÷ 應到，點過名才有
+create or replace function public.event_rates(sem uuid)
+returns table (event_id uuid, starts_at timestamptz, title text, kinds text[], marked boolean,
+  expected int, attended numeric, rate numeric, said_yes int, said_off int, said_late int, no_reply int)
+language plpgsql stable security definer set search_path = public as $$
+declare rules jsonb; lw numeric; ew numeric; uw numeric; exclude_excused boolean;
+begin
+  if auth.uid() is not null and not public.is_officer() then return; end if;
+  select value into rules from settings where key = 'attendance_rules';
+  lw := coalesce((rules->>'late_weight')::numeric, 1);
+  ew := coalesce((rules->>'early_weight')::numeric, 1);
+  uw := coalesce((rules->>'unexcused_weight')::numeric, 0.5);
+  exclude_excused := coalesce(rules->>'excused_mode', 'absent') = 'exclude';
+  return query
+  with ev as (
+    select e as erow, e.id as eid, e.starts_at as st_at, e.title as ttl,
+      case when cardinality(e.kinds) > 0 then e.kinds else array[e.kind] end as ks,
+      exists (select 1 from attendance a where a.event_id = e.id) as mk
+    from events e where e.semester_id = sem and e.counts_attendance
+  ), cells as (
+    select ev.eid, ev.mk, l.type as lt,
+      coalesce(a.status, case when ev.mk then
+        case when l.type = 'leave' then 'excused' when l.type in ('sick','official') then l.type else 'absent' end end) as st
+    from ev cross join profiles p
+    left join attendance a on a.event_id = ev.eid and a.user_id = p.id
+    left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
+    where p.status = 'active' and public.is_expected(ev.erow, p.id) and coalesce(a.status, '') <> 'na'
+  ), agg as (
+    select c.eid,
+      count(*) filter (where coalesce(c.st, '') not in ('sick','official') and coalesce(c.lt, '') not in ('sick','official')
+        and not (exclude_excused and (c.st = 'excused' or (c.st is null and c.lt = 'leave'))))::int as ex,
+      coalesce(sum(case c.st when 'present' then 1::numeric
+        when 'late' then case when c.lt = 'late' then lw else uw end
+        when 'early' then case when c.lt = 'early' then ew else uw end else 0::numeric end), 0) as got,
+      count(*) filter (where c.lt = 'attend')::int as yes,
+      count(*) filter (where c.lt in ('leave','sick','official'))::int as off,
+      count(*) filter (where c.lt in ('late','early'))::int as le,
+      count(*) filter (where c.lt is null)::int as nr
+    from cells c group by c.eid
+  )
+  select ev.eid, ev.st_at, ev.ttl, ev.ks, ev.mk, coalesce(agg.ex, 0), coalesce(agg.got, 0),
+    case when ev.mk and agg.ex > 0 then round(agg.got / agg.ex * 100, 1) end,
+    coalesce(agg.yes, 0), coalesce(agg.off, 0), coalesce(agg.le, 0), coalesce(agg.nr, 0)
+  from ev left join agg on agg.eid = ev.eid
+  order by ev.st_at;
+end $$;
+revoke execute on function public.event_rates(uuid) from public, anon;
+grant execute on function public.event_rates(uuid) to authenticated;
+
 -- 個人出席明細：每次行程的計算後狀態
 create or replace function public.attendance_detail(sem uuid, uid uuid)
 returns table (event_id uuid, starts_at timestamptz, kind text, title text, expected boolean, marked boolean, status text, note text, leave_type text, leave_reason text)
@@ -1306,3 +1356,4 @@ update public.profiles p set officer_title = concat_ws('、', nullif(p.officer_t
 from l where p.id = l.user_id and position('組長' in p.officer_title) = 0;
 insert into public.user_roles (user_id, role) select user_id, 'officer' from public.user_roles where role = 'leader' on conflict do nothing;
 delete from public.user_roles where role = 'leader';
+

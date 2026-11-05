@@ -829,3 +829,18 @@ test('公假：一定要勾已私訊團長；跟病假一樣不列入出席率',
   assert.equal((await st()).expected_so_far, before.expected_so_far - 1);
   await as(A, `delete from attendance where event_id='${E(2)}' and user_id='${B}'`);
 });
+
+test('每場出席率：幹部看得到每一場的應到、事先回覆與點名後出席率；一般社員拿不到', async () => {
+  const EF = '55555555-5555-5555-5555-5555555555d1';
+  await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+    ('${EF}','${S}',array['tutti'],'大團（每場出席率測試）','2026-12-15 19:30+08','2026-12-15 21:30+08','tutti')`);
+  await as(B, `insert into leave_requests (event_id,type,reason) values ('${EF}','late','【20:00 到】家教')`);
+  const rows = (await as(A, `select * from event_rates('${S}')`)).rows;
+  const e1 = rows.find((r) => r.event_id === E(1));
+  assert.ok(e1 && e1.marked && e1.expected >= 2);                     // E1 點過名
+  assert.ok(Number(e1.rate) > 0 && Number(e1.rate) <= 100);
+  const f = rows.find((r) => r.event_id === EF);
+  assert.ok(f && !f.marked && f.rate === null);                       // 還沒點名：沒有出席率
+  assert.ok(f.expected >= 1 && f.said_late === 1 && f.no_reply === f.expected - 1);
+  assert.equal((await as(B, `select * from event_rates('${S}')`)).rows.length, 0);
+});
