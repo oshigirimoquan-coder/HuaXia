@@ -102,7 +102,7 @@ export const twTime = (iso: string) =>
     timeZone: "Asia/Taipei", month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
   });
 
-// 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務
+// 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務；明天要算出席、還沒回覆的人，到他那組的頻道 @ 他
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
 
 Deno.serve(async (req) => {
@@ -132,6 +132,30 @@ Deno.serve(async (req) => {
   const off = (events ?? []).filter((e) => officerOnly(e));
   const sent: string[] = [];
   if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
+
+  // 還沒回覆（沒按出席，也沒請假／晚到／早退）的人：依組別發到各組頻道（沒設定就發公告頻道）並 @ 他
+  let nagged = 0;
+  for (const e of pub.filter((x) => x.counts_attendance)) {
+    const { data: rows } = await db.rpc("unanswered", { eid: e.id });
+    if (!rows?.length) continue;
+    const { data: ids } = await db.rpc("discord_ids", { uids: rows.map((r: any) => r.user_id) });
+    const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
+    const evSecs: string[] = kindsOf(e).includes("sectional") ? (e.sections?.length ? e.sections : [e.section]) : [];
+    const bySec = new Map<string, any[]>();
+    for (const r of rows) {
+      const secs: string[] = r.sections ?? [];
+      const sec = secs.find((s) => evSecs.includes(s)) ?? secs[0] ?? "";
+      if (!bySec.has(sec)) bySec.set(sec, []);
+      bySec.get(sec)!.push(r);
+    }
+    for (const [sec, list] of bySec) {
+      const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
+      const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
+      const text = `**明天 ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）還沒回覆要不要來：\n${who}\n\n會到請按「出席」；不能來、會晚到或早退，請請假並寫事由${SITE ? `：${SITE}` : ""}`;
+      if (await discord(hooks.sections?.[sec] ?? hooks.announce, text, { users: users.slice(0, 100) })) nagged += list.length;
+    }
+  }
+  if (nagged) sent.push(`unanswered:${nagged}`);
 
   const { data: tasks } = await db.from("tasks").select("title, due").eq("due", day).neq("status", "done");
   const offText = [
