@@ -1,6 +1,6 @@
 import { secsOf } from '../core.js';
 import { sb, state, me, route, esc, run, toast, formDialog, pageHead, empty, avatar, nameOf, sectionChip, roleChips, render, $, $$, loadShared } from '../core.js';
-import { SECTIONS, ROLE_LABEL } from '../logic.js';
+import { SECTIONS, ROLE_CHOICES, POSITIONS, splitTitle } from '../logic.js';
 import { invokeFn } from './events.js';
 
 async function editMember(u, priv) {
@@ -15,15 +15,15 @@ async function editMember(u, priv) {
     { name: 'instruments', label: '樂器', value: u.instruments, placeholder: '例：二胡／中胡' },
   ];
   if (p.admin) fields.push(
-    { name: 'roles', label: '身分組', type: 'checks', full: true, value: u.roles, options: Object.entries(ROLE_LABEL), hint: '可以多選。組長管理的是他勾選的組別（勾兩組就管兩組）。' },
-    { name: 'officer_title', label: '幹部職位', value: u.officer_title, placeholder: '例：副社、總務、公關、器材、文書、教學' },
+    { name: 'roles', label: '身分組', type: 'checks', full: true, value: u.roles, options: ROLE_CHOICES, hint: '可以多選。組長也是勾「幹部」，再到下面的職位勾「X組長」。' },
+    { name: 'positions', label: '幹部職位（可複選）', type: 'checks', full: true, value: splitTitle(u.officer_title), options: [...POSITIONS, ...splitTitle(u.officer_title).filter((x) => !POSITIONS.includes(x))].map((x) => [x, x]), hint: '有勾「幹部」身分才會生效。勾「X組長」的人會在各組頁面標為組長。' },
     { name: 'status', label: '帳號狀態', type: 'select', value: u.status, options: [['active', '啟用'], ['pending', '待核准'], ['inactive', '停用（已離團或畢業）']] },
   );
   const v = await formDialog({ title: nameOf(u.id), fields });
   if (!v) return;
   const sections = SECTIONS.filter((s) => v.sections.includes(s));
   const row = { display_name: v.display_name, real_name: v.real_name, sections, section: sections[0] || null, instruments: v.instruments };
-  if (p.admin) Object.assign(row, { officer_title: v.officer_title, status: v.status });
+  if (p.admin) Object.assign(row, { officer_title: [...POSITIONS.filter((x) => v.positions.includes(x)), ...v.positions.filter((x) => !POSITIONS.includes(x))].join('、'), status: v.status });
   const ok = await run(() => sb.from('profiles').update(row).eq('id', u.id));
   if (!ok) return;
   if (p.admin) {
@@ -52,7 +52,7 @@ async function batchRoles(people) {
   if (!chosen.length) return toast('先勾選要設定的人', 'bad');
   const v = await formDialog({ title: `批次設定 ${chosen.length} 人`, submit: '套用', fields: [
     { name: 'mode', label: '動作', type: 'select', value: 'add', options: [['add', '加上這些身分組'], ['del', '移除這些身分組']] },
-    { name: 'roles', label: '身分組', type: 'checks', full: true, value: [], options: Object.entries(ROLE_LABEL), hint: '原本有的其他身分組不會動。選到「待核准」的人，加上身分時會一起核准。' },
+    { name: 'roles', label: '身分組', type: 'checks', full: true, value: [], options: ROLE_CHOICES, hint: '原本有的其他身分組不會動。選到「待核准」的人，加上身分時會一起核准。' },
   ] });
   if (!v) return;
   if (!v.roles.length) return toast('至少選一個身分組', 'bad');

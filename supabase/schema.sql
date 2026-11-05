@@ -1291,3 +1291,18 @@ revoke execute on function public.lingling_publish_version() from public, anon;
 revoke execute on function public.lingling_publish(jsonb) from public, anon;
 grant execute on function public.lingling_publish_version() to authenticated;
 grant execute on function public.lingling_publish(jsonb) to authenticated;
+
+-- 組長併入幹部（2026-11）：網站不再有「組長」身分組。原本是組長的人改成「幹部」，
+-- 職位加上他所在組別的「X組長」（在兩組就兩個都加，請管理員到成員頁確認）。重複執行不會重複加。
+with l as (
+  select ur.user_id,
+    string_agg(x || '組長', '、' order by array_position(array['吹管','拉弦','彈撥','打擊','低音'], x)) as t
+  from user_roles ur join profiles pr on pr.id = ur.user_id
+  cross join unnest(case when cardinality(pr.sections) > 0 then pr.sections else array_remove(array[pr.section], null) end) as x
+  where ur.role = 'leader'
+  group by ur.user_id
+)
+update public.profiles p set officer_title = concat_ws('、', nullif(p.officer_title, ''), l.t)
+from l where p.id = l.user_id and position('組長' in p.officer_title) = 0;
+insert into public.user_roles (user_id, role) select user_id, 'officer' from public.user_roles where role = 'leader' on conflict do nothing;
+delete from public.user_roles where role = 'leader';
