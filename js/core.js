@@ -16,7 +16,7 @@ export const DEMO_ROLES = {
   officer: { label: '幹部', roles: ['officer', 'member'] },
   leader: { label: '組長', roles: ['leader', 'member'] },
   member: { label: '一般社員', roles: ['member'] },
-  newbie: { label: '新生', roles: ['newbie', 'member'] },
+  newbie: { label: '教學班學員', roles: ['newbie', 'member'] },
   ringer: { label: '槍手（外校支援）', roles: ['ringer'] },
 };
 export function demoAs() { try { return sessionStorage.getItem('demo-as') || 'admin'; } catch { return 'admin'; } }

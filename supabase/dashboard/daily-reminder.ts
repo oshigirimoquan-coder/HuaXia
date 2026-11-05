@@ -124,9 +124,17 @@ Deno.serve(async (req) => {
     .gte("starts_at", from).lte("starts_at", to).order("starts_at");
 
   const hhmm = (iso: string) => new Date(iso).toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false });
+  // 每場事先回覆的狀況（應到幾人、幾人回覆）
+  const rates = new Map<string, any>();
+  for (const sem of new Set((events ?? []).filter((e) => e.counts_attendance && e.semester_id).map((e) => e.semester_id))) {
+    const { data } = await db.rpc("event_rates", { sem });
+    for (const r of data ?? []) rates.set(r.event_id, r);
+  }
   const line = (e: any) => {
     const ps = (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean);
-    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${kindText(e)}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}`;
+    const r = rates.get(e.id);
+    const reply = r && r.expected ? `\n　應到 ${r.expected} 人：已回覆出席 ${r.said_yes}、請假 ${r.said_off}、晚到早退 ${r.said_late}、還沒回覆 ${r.no_reply}` : "";
+    return `• ${hhmm(e.starts_at)}–${hhmm(e.ends_at)} [${kindText(e)}] ${e.title}${e.location ? `｜${e.location}` : ""}${ps.length ? `\n　曲目：${ps.join("、")}` : ""}${reply}`;
   };
   const pub = (events ?? []).filter((e) => !officerOnly(e));
   const off = (events ?? []).filter((e) => officerOnly(e));

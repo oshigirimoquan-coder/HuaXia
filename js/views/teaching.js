@@ -5,7 +5,7 @@ const TABS = { classes: '教學班', resources: '教學資源', reports: '練習
 
 async function editClass(c = null) {
   const people = activePeople();
-  const opts = people.map((p) => [p.id, `${nameOf(p.id)}${p.roles.includes('newbie') ? '（新生）' : ''}`]);
+  const opts = people.map((p) => [p.id, `${nameOf(p.id)}${p.roles.includes('newbie') ? '（教學班）' : ''}`]);
   const [{ data: stu }, { data: ms }] = c ? await Promise.all([
     sb.from('class_students').select('user_id').eq('class_id', c.id),
     sb.from('class_milestones').select('*').eq('class_id', c.id).order('sort'),
@@ -16,7 +16,7 @@ async function editClass(c = null) {
       { name: 'name', label: '班名', required: true, value: c?.name, placeholder: '例：二胡入門班' },
       { name: 'instrument', label: '樂器', value: c?.instrument },
       { name: 'teachers', label: '帶課的人', type: 'checks', value: c?.teacher_ids || [], options: opts.filter(([id]) => !state.people.get(id)?.roles.includes('newbie')), full: true },
-      { name: 'students', label: '學員', type: 'checks', value: (stu || []).map((x) => x.user_id), options: opts.filter(([id]) => state.people.get(id)?.roles.includes('newbie')), full: true, hint: '只列出有「新生」身分組的人' },
+      { name: 'students', label: '學員', type: 'checks', value: (stu || []).map((x) => x.user_id), options: opts.filter(([id]) => state.people.get(id)?.roles.includes('newbie')), full: true, hint: '只列出有「教學班」身分組的人' },
       { name: 'milestones', label: '進度清單（一行一項）', type: 'textarea', rows: 6, full: true, value: (ms || []).map((m) => m.title).join('\n'), placeholder: '會調音\n會基本指法\n能拉空弦長音\n能演奏第一首曲子' },
       { name: 'note', label: '備註', type: 'textarea', value: c?.note, full: true },
     ],

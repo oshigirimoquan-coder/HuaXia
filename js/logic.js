@@ -2,11 +2,13 @@
 export const TZ = 'Asia/Taipei';
 export const SECTIONS = ['吹管', '拉弦', '彈撥', '打擊', '低音'];
 export const ROLE_LABEL = {
-  admin: '管理員', officer: '幹部', leader: '組長', member: '社員', newbie: '新生', ringer: '槍手', teacher: '指導老師', alumni: '校友',
+  admin: '管理員', officer: '幹部', leader: '組長', member: '社員', newbie: '教學班', ringer: '槍手', teacher: '指導老師', alumni: '校友',
 };
 // 組長併進幹部：身分組不再提供「組長」，改在幹部職位勾「X組長」
-export const ROLE_CHOICES = Object.entries(ROLE_LABEL).filter(([k]) => k !== 'leader');
+export const ROLE_CHOICES = Object.entries(ROLE_LABEL).filter(([k]) => k !== 'leader');  // 組長併進幹部
 export const POSITIONS = ['團長', '學生指揮', '譜務', '社長', '副社長', '總務', '活動', '場器', '美宣', '吹管組長', '拉弦組長', '彈撥組長', '打擊組長', '低音組長'];
+// 每場出席的事先回覆：出席／請假（事假、病假、公假）／晚到早退／沒回覆
+export const replyLine = (r) => [`出席 ${r.said_yes}`, `請假 ${r.said_off}`, `晚到早退 ${r.said_late}`, r.no_reply ? `<b class="warn-t">沒回覆 ${r.no_reply}</b>` : '沒回覆 0'].join('・');
 export const splitTitle = (t) => String(t || '').split(/[、,，/／\s]+/).map((x) => x.trim()).filter(Boolean);
 export const KIND_LABEL = {
   tutti: '大團', sizhu: '絲竹', extra: '加練', sectional: '分部課', class: '教學班',
@@ -18,7 +20,7 @@ export const LEAVE_LABEL = { leave: '事假', sick: '病假', official: '公假'
 // 事先按「出席」確認會到（存在請假表，type = 'attend'）
 export const isAttend = (l) => l?.type === 'attend' || l?.leave_type === 'attend';
 export const ANN_TYPE = { practice: '練習異動', performance: '演出', admin: '行政', class: '教學班', urgent: '緊急', other: '公告' };
-export const ANN_AUDIENCE = { all: '全體（含槍手）', insiders: '全體社員', section: '某一組', officers: '幹部', newbies: '新生', ringers: '槍手' };
+export const ANN_AUDIENCE = { all: '全體（含槍手）', insiders: '全體社員', section: '某一組', officers: '幹部', newbies: '教學班', ringers: '槍手' };
 
 // 依身分組判斷權限（與資料庫規則一致，資料庫才是最終把關）
 export function perms(roles, active = true) {
