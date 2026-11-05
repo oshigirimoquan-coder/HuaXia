@@ -268,7 +268,7 @@ dialog[open] { animation: pop .18s cubic-bezier(.2,.8,.2,1); }
 .tag:hover { text-decoration: none; color: var(--ink); }
 .dot-n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--bad); color: var(--accent-ink); font: 600 12px var(--f-mono); vertical-align: 2px; letter-spacing: 0; }
 .att { font-size: 13px; font-weight: 600; color: var(--muted); }
-.att-present { color: var(--ok); } .att-late, .att-early { color: var(--warn); } .att-absent { color: var(--bad); } .att-excused, .att-sick { color: var(--accent); }
+.att-present { color: var(--ok); } .att-late, .att-early { color: var(--warn); } .att-absent { color: var(--bad); } .att-excused, .att-sick, .att-official { color: var(--accent); }
 
 /* ---------- 行程 ---------- */
 .ev-list { display: grid; }

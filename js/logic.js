@@ -8,10 +8,9 @@ export const KIND_LABEL = {
   tutti: '大團', sizhu: '絲竹', extra: '加練', sectional: '分部課', class: '教學班',
   dress: '總彩', concert: '公演', officer: '幹部會議', other: '活動',
 };
-export const ATT_LABEL = { present: '出席', late: '晚到', early: '早退', absent: '缺席', excused: '事假', sick: '病假', na: '無曲' };
-// 請假分事假與病假：病假不列入出席率
-export const LEAVE_LABEL = { leave: '事假', sick: '病假', late: '晚到', early: '早退' };
-export const isOff = (t) => t === 'leave' || t === 'sick';  // 整場不來（事假或病假）
+export const ATT_LABEL = { present: '出席', late: '晚到', early: '早退', absent: '缺席', excused: '事假', sick: '病假', official: '公假', na: '無曲' };
+// 請假分事假、病假、公假：病假、公假不列入出席率
+export const LEAVE_LABEL = { leave: '事假', sick: '病假', official: '公假', late: '晚到', early: '早退' };
 // 事先按「出席」確認會到（存在請假表，type = 'attend'）
 export const isAttend = (l) => l?.type === 'attend' || l?.leave_type === 'attend';
 export const ANN_TYPE = { practice: '練習異動', performance: '演出', admin: '行政', class: '教學班', urgent: '緊急', other: '公告' };
@@ -142,6 +141,7 @@ export function defaultRollStatus(row) {
   if (row.status) return row.status;
   if (row.leave_type === 'leave') return 'excused';
   if (row.leave_type === 'sick') return 'sick';
+  if (row.leave_type === 'official') return 'official';
   if (row.leave_type === 'late') return 'late';
   if (row.leave_type === 'early') return 'early';
   if (row.leave_type === 'attend') return 'present';

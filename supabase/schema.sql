@@ -396,12 +396,13 @@ create table if not exists public.leave_requests (
 
 -- 「出席」確認也存在這張表（type = 'attend'）：事先按了會到，點名時預設帶「出席」
 alter table public.leave_requests drop constraint if exists leave_requests_type_check;
-alter table public.leave_requests add constraint leave_requests_type_check check (type in ('leave','late','early','attend','sick'));
+alter table public.leave_requests add constraint leave_requests_type_check check (type in ('leave','late','early','attend','sick','official'));
 -- 病假要附證明：上傳照片（Storage「leave-proofs」，只有本人和幹部看得到），或勾「已私訊團長」
 alter table public.leave_requests add column if not exists proof_paths text[] not null default '{}';
 alter table public.leave_requests add column if not exists proof_dm boolean not null default false;
 alter table public.leave_requests drop constraint if exists leave_requests_sick_proof;
-alter table public.leave_requests add constraint leave_requests_sick_proof check (type <> 'sick' or proof_dm or cardinality(proof_paths) > 0);
+-- 公假：一定要先私訊團長（proof_dm）
+alter table public.leave_requests add constraint leave_requests_sick_proof check ((type <> 'sick' or proof_dm or cardinality(proof_paths) > 0) and (type <> 'official' or proof_dm));
 
 create table if not exists public.attendance (
   event_id uuid references public.events(id) on delete cascade,
@@ -412,9 +413,9 @@ create table if not exists public.attendance (
   marked_at timestamptz not null default now(),
   primary key (event_id, user_id)
 );
--- 病假（sick）：不算缺席，不列入出席率；事假（excused）照出席率規則
+-- 病假（sick）、公假（official）：不算缺席，不列入出席率；事假（excused）照出席率規則
 alter table public.attendance drop constraint if exists attendance_status_check;
-alter table public.attendance add constraint attendance_status_check check (status in ('present','late','early','absent','excused','sick','na'));
+alter table public.attendance add constraint attendance_status_check check (status in ('present','late','early','absent','excused','sick','official','na'));
 
 -- ---------------------------------------------------------------------
 -- 7. 公告、任務
@@ -693,7 +694,7 @@ begin
   ), cells as (
     select p.id as uid, ev.marked, l.type as lt,
       coalesce(a.status, case when ev.marked then
-        case when l.type = 'leave' then 'excused' when l.type = 'sick' then 'sick' else 'absent' end end) as st
+        case when l.type = 'leave' then 'excused' when l.type in ('sick','official') then l.type else 'absent' end end) as st
     from profiles p cross join ev
     left join attendance a on a.event_id = ev.eid and a.user_id = p.id
     left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
@@ -711,18 +712,18 @@ begin
   ), agg as (
     select uid,
       count(*)::int as exp_total,
-      count(*) filter (where marked and st is distinct from 'sick' and not (exclude_excused and st = 'excused'))::int as exp_now,
+      count(*) filter (where marked and coalesce(st, '') not in ('sick','official') and not (exclude_excused and st = 'excused'))::int as exp_now,
       coalesce(sum(wt), 0) as got,
       count(*) filter (where st = 'present')::int as n_present,
       count(*) filter (where st = 'late')::int as n_late,
       count(*) filter (where st = 'early')::int as n_early,
       count(*) filter (where st = 'excused')::int as n_excused,
-      count(*) filter (where st = 'sick' or (not marked and st is null and lt = 'sick'))::int as n_sick,
+      count(*) filter (where st in ('sick','official') or (not marked and st is null and lt in ('sick','official')))::int as n_sick,
       count(*) filter (where st = 'absent')::int as n_absent,
-      count(*) filter (where not marked and st is distinct from 'sick' and lt is distinct from 'sick' and not (exclude_excused and st = 'excused'))::int as future
+      count(*) filter (where not marked and coalesce(st, '') not in ('sick','official') and coalesce(lt, '') not in ('sick','official') and not (exclude_excused and st = 'excused'))::int as future
     from w group by uid
   )
-  -- 「請假」欄 = 事假 + 病假；病假不列入應到
+  -- 「請假」欄 = 事假 + 病假 + 公假；病假、公假不列入應到
   select uid, exp_total - case when exclude_excused then n_excused else 0 end - n_sick, exp_now, got,
     n_present, n_late, n_early, n_excused + n_sick, n_absent,
     case when exp_now > 0 then round(got / exp_now * 100, 1) end,
@@ -775,7 +776,7 @@ begin
     select e.id, e.starts_at, e.kind, e.title, public.is_expected(e, uid),
       exists (select 1 from attendance x where x.event_id = e.id),
       coalesce(a.status, case when exists (select 1 from attendance x where x.event_id = e.id)
-        and public.is_expected(e, uid) then case when l.type = 'leave' then 'excused' when l.type = 'sick' then 'sick' else 'absent' end end),
+        and public.is_expected(e, uid) then case when l.type = 'leave' then 'excused' when l.type in ('sick','official') then l.type else 'absent' end end),
       a.note, l.type, l.reason
     from events e
     left join attendance a on a.event_id = e.id and a.user_id = uid

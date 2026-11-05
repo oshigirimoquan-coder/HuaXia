@@ -165,7 +165,7 @@ export function formDialog({ title, fields, submit = '儲存', danger = null, sw
     const d = document.createElement('dialog');
     d.className = 'dlg';
     const field = (f) => {
-      if (f.type === 'note') return `<p class="field full small muted">${esc(f.text)}</p>`;
+      if (f.type === 'note') return `<p class="field full small muted" ${f.only ? `data-only="${f.only.join(' ')}"` : ''}>${esc(f.text)}</p>`;
       if (f.type === 'info') { const rows = f.rows.filter(([, val]) => val); return `<dl class="field full info-list">${rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('') || `<dd class="muted">${esc(f.empty || '沒有資料')}</dd>`}</dl>`; }
       const id = `f-${f.name}`; const v = f.value ?? '';
       const req = f.required ? 'required' : '';
