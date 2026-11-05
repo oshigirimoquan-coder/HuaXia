@@ -1,5 +1,6 @@
 import { secsOf, mySecs } from '../core.js';
 import { sb, state, me, route, go, esc, run, toast, formDialog, armDelete, pageHead, empty, fmtDate, fmtTime, fmtRange, chipPerson, nameOf, sectionChip, render, $, $$, DEMO } from '../core.js';
+import { shrink } from './announcements.js';
 import { KIND_LABEL, LEAVE_LABEL, ATT_LABEL, SECTIONS, sectionsOf, isAttend, eventDefaults, kindsDefaults, kindsLabel, twParts, twWeekday, twToIso, daysFromToday, defaultRollStatus } from '../logic.js';
 
 export async function invokeFn(name, body) {
@@ -114,7 +115,20 @@ export async function toggleAttend(evId, on) {
 
 // 晚到／早退要填時間：存在事由最前面，例如「【20:15 到】家教」，點名和紀錄上都看得到
 const TIME_TAG = /^【(\d{1,2}:\d{2}) (到|走)】\s*/;
+const PROOF = 'leave-proofs';
+const proofHtml = (x) => !x ? '' : ` <span class="proof">${(x.proof_paths || []).map((p, i) => `<button class="link" data-proof="${esc(p)}">證明${(x.proof_paths.length > 1) ? i + 1 : ''}</button>`).join(' ')}${x.proof_dm ? '<span class="chip">已私訊團長</span>' : ''}</span>`;
+// 病假證明：私人檔案，開啟時拿有時效的網址（Safari 不擋：先開分頁再導向）
+export async function openProof(path) {
+  const w = window.open('', '_blank');
+  const { data, error } = await sb.storage.from(PROOF).createSignedUrl(path, 600);
+  if (error) { w?.close(); return toast('打不開證明：' + error.message, 'bad'); }
+  if (w && !w.closed) w.location.href = data.signedUrl; else location.href = data.signedUrl;
+}
 export async function leaveDialog(ev, cur) {
+  // 從出席明細打開時只帶了類型和事由，這裡重新讀一次，才拿得到病假證明
+  if (cur) cur = (await sb.from('leave_requests').select('*').eq('event_id', ev.id).eq('user_id', me()).maybeSingle()).data || cur;
+  const oldProofs = cur?.proof_paths || [];
+  const signed = oldProofs.length ? ((await sb.storage.from(PROOF).createSignedUrls(oldProofs, 3600)).data || []) : [];
   const m = (cur?.reason || '').match(TIME_TAG);
   const v = await formDialog({
     title: `${cur ? '修改' : ''}請假：${ev.title}`,
@@ -122,16 +136,42 @@ export async function leaveDialog(ev, cur) {
     submit: '送出',
     switchBy: 'type',
     fields: [
-      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假不列入出席率；事假依社團規定計算' },
+      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假不列入出席率，但要附證明；事假依社團規定計算' },
       { name: 'at', label: '幾點到／幾點走', type: 'time', value: m?.[1] || '', only: ['late', 'early'], hint: '晚到填預計幾點到，早退填預計幾點走' },
-      { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, placeholder: '例：期中考、家教卡到' },
+      { name: 'proof', label: '病假證明（診斷證明、藥袋、掛號單的照片）', type: 'photos', full: true, only: ['sick'], value: oldProofs.map((path, i) => ({ path, url: signed[i]?.signedUrl || '' })) },
+      { name: 'proof_dm', type: 'toggle', text: '不方便上傳，已私訊團長提供證明', value: cur?.proof_dm, only: ['sick'], full: true },
+      { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, full: true, placeholder: '例：期中考、家教卡到、發燒' },
     ],
-    validate: (x) => (x.type === 'late' || x.type === 'early') && !x.at ? (x.type === 'late' ? '請填預計幾點到' : '請填預計幾點走') : null,
+    validate: (x) => {
+      if ((x.type === 'late' || x.type === 'early') && !x.at) return x.type === 'late' ? '請填預計幾點到' : '請填預計幾點走';
+      if (x.type === 'sick' && !x.proof_dm && !(x.proof.keep.length + x.proof.files.length)) return '病假要上傳證明照片，或勾選「已私訊團長」';
+      return null;
+    },
   });
   if (!v) return;
+  if (v.__danger) {
+    if (oldProofs.length) await sb.storage.from(PROOF).remove(oldProofs);
+    await run(() => sb.from('leave_requests').delete().eq('event_id', ev.id).eq('user_id', me()), '已撤回');
+    return render();
+  }
   const reason = v.type === 'late' || v.type === 'early' ? `【${v.at} ${v.type === 'late' ? '到' : '走'}】${v.reason}` : v.reason;
-  if (v.__danger) await run(() => sb.from('leave_requests').delete().eq('event_id', ev.id).eq('user_id', me()), '已撤回');
-  else await run(() => sb.from('leave_requests').upsert({ event_id: ev.id, user_id: me(), type: v.type, reason }), '已送出');
+  let proofs = [], dm = false;
+  if (v.type === 'sick') {
+    dm = v.proof_dm;
+    proofs = [...v.proof.keep];
+    for (const f of v.proof.files) {
+      try {
+        const blob = await shrink(f);
+        const path = `${me()}/${ev.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+        const { error } = await sb.storage.from(PROOF).upload(path, blob, { contentType: 'image/jpeg' });
+        if (error) throw error;
+        proofs.push(path);
+      } catch (e) { return toast('證明上傳失敗：' + (e.message || e), 'bad'); }
+    }
+  }
+  const ok = await run(() => sb.from('leave_requests').upsert({ event_id: ev.id, user_id: me(), type: v.type, reason, proof_paths: proofs, proof_dm: dm }), '已送出');
+  const drop = oldProofs.filter((p) => !proofs.includes(p));
+  if (ok && drop.length) await sb.storage.from(PROOF).remove(drop);
   render();
 }
 
@@ -216,11 +256,15 @@ route('/events/:id', async ({ id }) => {
   const myLeave = confirmed ? null : myRow;
   const canRoll = p.officer || p.leader;
   const roster = (await sb.rpc('event_roster', { eid: id })).data || [];
+  // 病假證明（只有幹部、組長讀得到別人的）
+  const proofOf = new Map(canRoll && roster.some((r) => r.leave_type === 'sick')
+    ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).eq('type', 'sick')).data || []).map((x) => [x.user_id, x]) : []);
   const mine = roster.find((r) => r.user_id === me());
   const expectedMe = mine?.expected;
 
   setTimeout(() => {
     $('#edit-ev')?.addEventListener('click', () => editEvent(ev));
+    $$('[data-proof]').forEach((b) => (b.onclick = () => openProof(b.dataset.proof)));
     $('#leave-btn')?.addEventListener('click', () => leaveDialog(ev, myLeave));
     $('#attend-btn')?.addEventListener('click', () => toggleAttend(id, !confirmed));
     $('#all-present')?.addEventListener('click', async () => {
@@ -271,8 +315,8 @@ route('/events/:id', async ({ id }) => {
       <div class="card-head"><h2>點名 <span class="muted small">應到 ${exp.length} 人${yes ? `・已確認出席 ${yes} 人` : ''}</span></h2>
         <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'sick', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
         <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
-      <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。</p>
-      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}</div>`).join('')}</div>` : ''}
+      <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。病假要附證明，沒附的可以改標「事假」。</p>
+      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${r.leave_type === 'sick' ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';
         return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${r.expected ? '' : ' <span class="chip">非應到</span>'}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>

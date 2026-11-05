@@ -397,6 +397,11 @@ create table if not exists public.leave_requests (
 -- 「出席」確認也存在這張表（type = 'attend'）：事先按了會到，點名時預設帶「出席」
 alter table public.leave_requests drop constraint if exists leave_requests_type_check;
 alter table public.leave_requests add constraint leave_requests_type_check check (type in ('leave','late','early','attend','sick'));
+-- 病假要附證明：上傳照片（Storage「leave-proofs」，只有本人和幹部看得到），或勾「已私訊團長」
+alter table public.leave_requests add column if not exists proof_paths text[] not null default '{}';
+alter table public.leave_requests add column if not exists proof_dm boolean not null default false;
+alter table public.leave_requests drop constraint if exists leave_requests_sick_proof;
+alter table public.leave_requests add constraint leave_requests_sick_proof check (type <> 'sick' or proof_dm or cardinality(proof_paths) > 0);
 
 create table if not exists public.attendance (
   event_id uuid references public.events(id) on delete cascade,
@@ -1088,6 +1093,18 @@ create policy scores_read on storage.objects for select using (
     select 1 from public.scores s where s.file_path = storage.objects.name and public.can_read_score(s))));
 create policy scores_write on storage.objects for insert with check (bucket_id = 'scores' and public.is_officer());
 create policy scores_delete on storage.objects for delete using (bucket_id = 'scores' and public.is_officer());
+
+-- 病假證明：私人 bucket，本人上傳到自己的資料夾（<user id>/…）；本人與幹部看得到；本人或幹部可以刪
+insert into storage.buckets (id, name, public) values ('leave-proofs', 'leave-proofs', false) on conflict (id) do nothing;
+drop policy if exists proofs_read on storage.objects;
+drop policy if exists proofs_write on storage.objects;
+drop policy if exists proofs_delete on storage.objects;
+create policy proofs_read on storage.objects for select using (
+  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.is_officer()));
+create policy proofs_write on storage.objects for insert with check (
+  bucket_id = 'leave-proofs' and auth.uid() is not null and split_part(name, '/', 1) = auth.uid()::text);
+create policy proofs_delete on storage.objects for delete using (
+  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.is_officer()));
 
 -- 頭像：公開讀取（只是大頭貼）；只能上傳、取代、刪除自己資料夾（<user id>/…）裡的檔案
 insert into storage.buckets (id, name, public) values ('avatars', 'avatars', true) on conflict (id) do nothing;
