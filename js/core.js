@@ -123,7 +123,7 @@ export const chipPerson = (id, extra = '') => `<span class="person ${extra}">${a
 export const secsOf = (u) => (u?.sections?.length ? u.sections : u?.section ? [u.section] : []);
 export const mySecs = () => secsOf(state.profile);
 export const sectionChip = (s) => s ? `<span class="sec sec-${esc(s)}">${esc(s)}</span>` : '';
-export const roleChips = (roles) => roles.filter((r) => r !== 'member').map((r) => `<span class="chip role-${r}">${ROLE_LABEL[r]}</span>`).join('');
+export const roleChips = (roles) => roles.filter((r) => r !== 'member' && r !== 'leader').map((r) => `<span class="chip role-${r}">${ROLE_LABEL[r]}</span>`).join('');
 
 // ---------- 外觀：system（跟隨系統）／light／dark，存在這台裝置 ----------
 export function getTheme() { try { return localStorage.getItem('hx-theme') || 'system'; } catch { return 'system'; } }

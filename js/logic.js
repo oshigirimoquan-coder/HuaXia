@@ -4,6 +4,10 @@ export const SECTIONS = ['吹管', '拉弦', '彈撥', '打擊', '低音'];
 export const ROLE_LABEL = {
   admin: '管理員', officer: '幹部', leader: '組長', member: '社員', newbie: '新生', ringer: '槍手', teacher: '指導老師', alumni: '校友',
 };
+// 組長併進幹部：身分組不再提供「組長」，改在幹部職位勾「X組長」
+export const ROLE_CHOICES = Object.entries(ROLE_LABEL).filter(([k]) => k !== 'leader');
+export const POSITIONS = ['團長', '學生指揮', '譜務', '社長', '副社長', '總務', '活動', '場器', '美宣', '吹管組長', '拉弦組長', '彈撥組長', '打擊組長', '低音組長'];
+export const splitTitle = (t) => String(t || '').split(/[、,，/／\s]+/).map((x) => x.trim()).filter(Boolean);
 export const KIND_LABEL = {
   tutti: '大團', sizhu: '絲竹', extra: '加練', sectional: '分部課', class: '教學班',
   dress: '總彩', concert: '公演', officer: '幹部會議', other: '活動',
