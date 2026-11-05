@@ -829,3 +829,17 @@ test('公假：一定要勾已私訊團長；跟病假一樣不列入出席率',
   assert.equal((await st()).expected_so_far, before.expected_so_far - 1);
   await as(A, `delete from attendance where event_id='${E(2)}' and user_id='${B}'`);
 });
+
+test('組長負責的組別：管理員可以指定；指定後只管那幾組；本人不能自己改', async () => {
+  const L = '00000000-0000-0000-0000-0000000000b2';   // 拉弦組長
+  const sees = async () => (await as(L, `select user_id from attendance_stats('${S}')`)).rows.map((r) => r.user_id);
+  assert.ok((await sees()).includes(B));                                         // 沒指定：管他所在的拉弦，看得到 B
+  assert.ok((await as(L, `update profiles set leads=array['吹管'] where id='${L}'`)).error);   // 本人不能改
+  await as(A, `update profiles set sections=array['拉弦','吹管'], leads=array['吹管'] where id='${L}'`);
+  assert.ok(!(await sees()).includes(B));                                        // 只負責吹管：看不到拉弦的 B
+  const tryAssign = async () => { const r = await as(L, `insert into part_assignments (part_id,user_id) values ('${PT1}','${R}')`); await as(A, `delete from part_assignments where part_id='${PT1}' and user_id='${R}'`); return r.error; };
+  assert.ok(await tryAssign());                                                   // 也不能排拉弦的聲部
+  await as(A, `update profiles set sections=array['拉弦'], leads='{}' where id='${L}'`);
+  assert.ok((await sees()).includes(B));
+  assert.equal(await tryAssign(), undefined);                                     // 改回來就能排
+});

@@ -1,4 +1,4 @@
-import { secsOf } from '../core.js';
+import { secsOf, leadSecsOf } from '../core.js';
 import { sb, state, me, route, esc, run, toast, formDialog, pageHead, empty, avatar, nameOf, sectionChip, roleChips, render, $, $$, loadShared } from '../core.js';
 import { SECTIONS, ROLE_LABEL } from '../logic.js';
 import { invokeFn } from './events.js';
@@ -15,7 +15,8 @@ async function editMember(u, priv) {
     { name: 'instruments', label: '樂器', value: u.instruments, placeholder: '例：二胡／中胡' },
   ];
   if (p.admin) fields.push(
-    { name: 'roles', label: '身分組', type: 'checks', full: true, value: u.roles, options: Object.entries(ROLE_LABEL), hint: '可以多選。組長管理的是他勾選的組別（勾兩組就管兩組）。' },
+    { name: 'roles', label: '身分組', type: 'checks', full: true, value: u.roles, options: Object.entries(ROLE_LABEL), hint: '可以多選。' },
+    { name: 'leads', label: '組長負責的組別', type: 'checks', full: true, value: u.leads || [], options: SECTIONS.map((s) => [s, s]), hint: '有勾「組長」身分才有用。都不勾＝負責他所在的組別；例如同時在彈撥、打擊，但只當打擊組長，就只勾打擊。' },
     { name: 'officer_title', label: '幹部職位', value: u.officer_title, placeholder: '例：副社、總務、公關、器材、文書、教學' },
     { name: 'status', label: '帳號狀態', type: 'select', value: u.status, options: [['active', '啟用'], ['pending', '待核准'], ['inactive', '停用（已離團或畢業）']] },
   );
@@ -23,7 +24,7 @@ async function editMember(u, priv) {
   if (!v) return;
   const sections = SECTIONS.filter((s) => v.sections.includes(s));
   const row = { display_name: v.display_name, real_name: v.real_name, sections, section: sections[0] || null, instruments: v.instruments };
-  if (p.admin) Object.assign(row, { officer_title: v.officer_title, status: v.status });
+  if (p.admin) Object.assign(row, { officer_title: v.officer_title, status: v.status, leads: SECTIONS.filter((s) => v.leads.includes(s)) });
   const ok = await run(() => sb.from('profiles').update(row).eq('id', u.id));
   if (!ok) return;
   if (p.admin) {
@@ -117,7 +118,7 @@ route('/members', async () => {
     `<div class="seg wrap"><button data-mf="" aria-pressed="${!f}">全部</button>${SECTIONS.map((s) => `<button data-mf="${s}" aria-pressed="${f === s}">${s}</button>`).join('')}<button data-mf="officer" aria-pressed="${f === 'officer'}">幹部</button><button data-mf="ringer" aria-pressed="${f === 'ringer'}">槍手</button><button data-mf="alumni" aria-pressed="${f === 'alumni'}">校友</button></div>` +
     (list.length ? `<div class="tbl-wrap"><table class="${p.officer || batch ? 'click' : ''}"><thead><tr><th>成員</th><th>組別</th><th>樂器</th><th>身分</th>${p.officer ? '<th>Email</th>' : ''}</tr></thead><tbody>
       ${list.map((u) => `<tr data-member="${u.id}" class="${u.status === 'inactive' ? 'inactive' : ''}"><td><span class="person">${box(u.id)}${avatar(u.id, 24)}<b>${esc(nameOf(u.id))}</b>${u.real_name && u.real_name !== u.display_name ? `<span class="muted small">${esc(u.real_name)}</span>` : ''}</span></td>
-        <td><div class="chips">${secsOf(u).map(sectionChip).join('')}</div></td><td class="small">${esc(u.instruments)}</td><td><div class="chips">${roleChips(u.roles)}${u.officer_title ? `<span class="chip gold">${esc(u.officer_title)}</span>` : ''}</div></td>
+        <td><div class="chips">${secsOf(u).map(sectionChip).join('')}</div></td><td class="small">${esc(u.instruments)}</td><td><div class="chips">${roleChips(u.roles)}${u.roles.includes('leader') ? `<span class="muted small">（${leadSecsOf(u).join('、') || '未分組'}）</span>` : ''}${u.officer_title ? `<span class="chip gold">${esc(u.officer_title)}</span>` : ''}</div></td>
         ${p.officer ? `<td class="small muted">${esc(privOf(u.id)?.email || '')}</td>` : ''}</tr>`).join('')}
     </tbody></table></div>` : empty('這個分類沒有成員'));
 });

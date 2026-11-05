@@ -89,7 +89,7 @@ export async function loadShared() {
     sb.from('semesters').select('*').order('starts_on', { ascending: false }),
     sb.from('settings').select('*'),
     sb.from('calendars').select('*').order('sort'),
-    sb.from('profiles').select('id, display_name, real_name, section, sections, instruments, avatar_url, status, officer_title, school, grade'),
+    sb.from('profiles').select('id, display_name, real_name, section, sections, leads, instruments, avatar_url, status, officer_title, school, grade'),
     sb.from('user_roles').select('*'),
   ]);
   state.semesters = sem.data || [];
@@ -122,6 +122,9 @@ export const chipPerson = (id, extra = '') => `<span class="person ${extra}">${a
 // 一個人的組別（可能好幾組）
 export const secsOf = (u) => (u?.sections?.length ? u.sections : u?.section ? [u.section] : []);
 export const mySecs = () => secsOf(state.profile);
+// 組長負責的組別：管理員有指定就用指定的，沒指定就是他所在的組別
+export const leadSecsOf = (u) => (u?.leads?.length ? u.leads : secsOf(u));
+export const myLeadSecs = () => leadSecsOf(state.profile);
 export const sectionChip = (s) => s ? `<span class="sec sec-${esc(s)}">${esc(s)}</span>` : '';
 export const roleChips = (roles) => roles.filter((r) => r !== 'member').map((r) => `<span class="chip role-${r}">${ROLE_LABEL[r]}</span>`).join('');
 

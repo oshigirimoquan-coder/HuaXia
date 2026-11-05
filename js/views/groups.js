@@ -1,5 +1,5 @@
 // 各組（2026-10 改版）：五個組別＋教學班。每組看成員、分部課、組內公告、出席率。
-import { secsOf, mySecs } from '../core.js';
+import { secsOf, mySecs, leadSecsOf, myLeadSecs } from '../core.js';
 import { sb, state, me, route, esc, pageHead, empty, avatar, nameOf, fmtDate, render, $$ } from '../core.js';
 import { SECTIONS, rateLevel } from '../logic.js';
 import { eventCard } from './events.js';
@@ -18,11 +18,14 @@ function pickTab() {
 }
 
 
+// 這個人是不是這一組的組長（管理員指定的組別；沒指定就是他所在的組）
+const leadsHere = (u, sec) => u.roles.includes('leader') && leadSecsOf(u).includes(sec);
+
 async function sectionView(sec) {
   const p = state.p;
   const members = [...state.people.values()].filter((u) => u.status === 'active' && secsOf(u).includes(sec))
-    .sort((a, b) => (b.roles.includes('leader') - a.roles.includes('leader')) || nameOf(a.id).localeCompare(nameOf(b.id), 'zh-Hant'));
-  const leaders = members.filter((u) => u.roles.includes('leader'));
+    .sort((a, b) => (leadsHere(b, sec) - leadsHere(a, sec)) || nameOf(a.id).localeCompare(nameOf(b.id), 'zh-Hant'));
+  const leaders = members.filter((u) => leadsHere(u, sec));
   const nowIso = new Date(Date.now() - 3 * 3600e3).toISOString();
   const sem = state.semester && !p.ringerOnly ? state.semester.id : null;
   const [evs, anns, stats, secAvg, honor] = await Promise.all([
@@ -42,7 +45,7 @@ async function sectionView(sec) {
   const showAvg = !!row || p.officer;
   const statOf = new Map(secStats.map((s) => [s.user_id, s]));
   // 出席率：幹部看全部、組長看自己組；一般社員只看得到自己的（資料庫本來就只給這些）
-  const canSeeAll = p.officer || (p.leader && mySecs().includes(sec));
+  const canSeeAll = p.officer || (p.leader && myLeadSecs().includes(sec));
 
   return `<section class="grp-hero sec-${esc(sec)}"><div>
       <h2>${esc(sec)}組</h2>
@@ -58,7 +61,7 @@ async function sectionView(sec) {
     <section class="card"><div class="card-head"><h2>成員</h2>${canSeeAll && !p.ringerOnly ? '<span class="muted small">出席率為目前已點名的場次</span>' : ''}</div>
       ${members.length ? `<ul class="grp-people">${members.map((u) => {
         const st = statOf.get(u.id);
-        return `<li class="${u.id === me() ? 'me' : ''}">${avatar(u.id, 36)}<div><b>${esc(nameOf(u.id))}</b>${u.roles.includes('leader') ? '<span class="chip gold">組長</span>' : ''}
+        return `<li class="${u.id === me() ? 'me' : ''}">${avatar(u.id, 36)}<div><b>${esc(nameOf(u.id))}</b>${leadsHere(u, sec) ? '<span class="chip gold">組長</span>' : ''}
           <span class="small muted">${esc(u.instruments || '')}</span>${good.has(u.id) ? '<span class="chip ok good-att">出席 80%↑</span>' : ''}</div>${(canSeeAll || u.id === me()) && !p.ringerOnly ? pct(st?.current_rate ?? null) : ''}</li>`;
       }).join('')}</ul>` : empty('這組還沒有成員', p.admin ? '到頭像選單的「成員」設定每個人的組別。' : '')}
     </section>`;

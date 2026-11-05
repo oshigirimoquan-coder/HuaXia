@@ -1,4 +1,4 @@
-import { secsOf, mySecs } from '../core.js';
+import { secsOf, mySecs, myLeadSecs } from '../core.js';
 import { sb, state, me, route, go, esc, run, toast, formDialog, pageHead, empty, chipPerson, activePeople, nameOf, render, $, $$, DEMO, sectionChip } from '../core.js';
 import { shortageOf, pieceShortage, divisiOf, parentChoices, divisiMovePlan, deleteCounts, SECTIONS, guessSection, autoSeat, reconcileSeats, STAGES, parseNeeded, matchPart, partNameFromFile } from '../logic.js';
 import { seatSvg } from './seating.js';
@@ -262,7 +262,7 @@ route('/pieces/:id', async ({ id }) => {
   ]);
   // 排人：幹部全部；組長排自己組；小老師排自己帶的聲部與它的分部（與資料庫 can_staff_part 一致）
   const canStaff = (pt) => p.officer || pt.tutor_id === me() || (pt.parent_id && pts.find((x) => x.id === pt.parent_id)?.tutor_id === me())
-    || (p.leader && mySecs().includes(pt.section || guessSection(pt.name)));
+    || (p.leader && myLeadSecs().includes(pt.section || guessSection(pt.name)));
   const pieceAsg = asg.filter((a) => pts.some((x) => x.id === a.part_id));
   const seatStage = { ...STAGES.hall, style: 'arc', ...(chart?.stage || {}) };
   const seatList = chart?.seats?.length ? reconcileSeats(chart.seats, pts, pieceAsg).seats : autoSeat(pts, pieceAsg, seatStage);

@@ -583,10 +583,17 @@ language sql stable security definer set search_path = public as $$
   select case when cardinality(sections) > 0 then sections when section is not null then array[section] else '{}'::text[] end
   from profiles where id = auth.uid()
 $$;
+-- 組長負責的組別：管理員可以指定（profiles.leads）；沒指定就是他所在的組別
+alter table public.profiles add column if not exists leads text[] not null default '{}'
+  check (leads <@ array['吹管','拉弦','彈撥','打擊','低音']::text[]);
+create or replace function public.my_lead_sections() returns text[]
+language sql stable security definer set search_path = public as $$
+  select case when cardinality(leads) > 0 then leads else public.my_sections() end from profiles where id = auth.uid()
+$$;
 create or replace function public.leads_user(uid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select public.has_role('leader') and exists (select 1 from profiles p where p.id = uid
-    and (case when cardinality(p.sections) > 0 then p.sections else array[p.section] end) && public.my_sections())
+    and (case when cardinality(p.sections) > 0 then p.sections else array[p.section] end) && public.my_lead_sections())
 $$;
 create or replace function public.in_piece(pid uuid) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -893,6 +900,9 @@ begin
   if (new.section is distinct from old.section or new.sections is distinct from old.sections) and not public.is_officer() then
     raise exception '組別由幹部設定';
   end if;
+  if new.leads is distinct from old.leads then
+    raise exception '組長負責的組別由管理員設定';
+  end if;
   return new;
 end $$;
 drop trigger if exists guard_profile on public.profiles;
@@ -958,7 +968,7 @@ language sql stable security definer set search_path = public as $$
     left join piece_parts par on par.id = pp.parent_id  -- 分部：所屬聲部的聲部長也能排
     where pp.id = pid and (
     pp.tutor_id = auth.uid() or par.tutor_id = auth.uid()
-    or (public.has_role('leader') and pp.section is not null and pp.section = any(public.my_sections())))))
+    or (public.has_role('leader') and pp.section is not null and pp.section = any(public.my_lead_sections())))))
 $$;
 -- 曲目與編制：社內成員看全部；槍手只看自己參與的曲目
 create policy piece_read on public.pieces for select using (public.is_insider() or public.in_piece(id));
