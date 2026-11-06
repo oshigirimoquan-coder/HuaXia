@@ -179,22 +179,29 @@ export async function leaveDialog(ev, cur) {
 }
 
 // 月曆：一格一天，點日期看當天行程
-function monthGrid(ym, evs, lv, pick) {
+// rooms：自己借的教室（只有自己看得到），用另一個顏色畫在月曆上
+const roomLine = (b) => `借 ${b.room}`;
+function monthGrid(ym, evs, lv, pick, rooms = []) {
   const [y, m] = ym.split('-').map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const today = twParts(new Date()).date;
   const byDay = new Map();
-  for (const e of evs) { const d = twParts(e.starts_at).date; if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(e); }
+  const put = (d, x) => { if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(x); };
+  for (const e of evs) put(twParts(e.starts_at).date, { t: e.starts_at, html: `<span class="cal-ev kd-${e.kind} ${lv.get(e.id) ? 'off' : ''}">${esc(e.title)}</span>` });
+  for (const b of rooms) put(twParts(b.starts_at).date, { t: b.starts_at, room: true, html: `<span class="cal-ev kd-room">${roomLine(b)}</span>` });
+  for (const l of byDay.values()) l.sort((a, b) => (a.t > b.t ? 1 : -1));
   const cells = [];
   for (let i = 0; i < first; i++) cells.push('<span class="cal-cell blank"></span>');
   for (let d = 1; d <= days; d++) {
     const key = `${ym}-${String(d).padStart(2, '0')}`; const list = byDay.get(key) || [];
     cells.push(`<button class="cal-cell ${key === today ? 'today' : ''} ${key === pick ? 'pick' : ''} ${list.length ? 'has' : ''}" data-day="${key}" aria-label="${m}月${d}日${list.length ? `，${list.length} 個行程` : ''}">
-      <b>${d}</b>${list.slice(0, 2).map((e) => `<span class="cal-ev kd-${e.kind} ${lv.get(e.id) ? 'off' : ''}">${esc(e.title)}</span>`).join('')}${list.length > 2 ? `<span class="cal-more">+${list.length - 2}</span>` : ''}</button>`);
+      <b>${d}</b>${list.slice(0, 2).map((x) => x.html).join('')}${list.length > 2 ? `<span class="cal-more">+${list.length - 2}</span>` : ''}</button>`);
   }
   return `<div class="cal-grid">${'日一二三四五六'.split('').map((w) => `<span class="cal-wk">${w}</span>`).join('')}${cells.join('')}</div>`;
 }
+
+const shiftYm = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
 
 route('/events', async () => {
   const p = state.p;
@@ -208,12 +215,13 @@ route('/events', async () => {
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
     q = q.gte('starts_at', twToIso(`${ym}-01`, '00:00')).lt('starts_at', twToIso(`${next}-01`, '00:00')).limit(200);
   } else q = filter === 'past' ? q.lt('starts_at', nowIso).limit(60) : q.gte('starts_at', nowIso).limit(80);
-  const [{ data: evsAll }, { data: leaves }] = await Promise.all([q, sb.from('leave_requests').select('*').eq('user_id', me())]);
+  const [{ data: evsAll }, { data: leaves }, { data: rooms }] = await Promise.all([q, sb.from('leave_requests').select('*').eq('user_id', me()),
+    filter === 'month' && p.insider ? sb.from('room_bookings').select('*').eq('user_id', me()).gte('starts_at', twToIso(`${ym}-01`, '00:00')).lt('starts_at', twToIso(`${shiftYm(ym, 1)}-01`, '00:00')).order('starts_at') : { data: [] }]);
   const evs = (evsAll || []).filter((e) => forMe(e));
   const lv = new Map((leaves || []).filter((l) => !isAttend(l)).map((l) => [l.event_id, l]));
   // 預設選今天；今天沒行程就選這個月接下來第一個有行程的日子
   const from = ym === today.slice(0, 7) ? today : `${ym}-01`;
-  const nextDay = (evs || []).map((e) => twParts(e.starts_at).date).filter((d) => d >= from).sort()[0];
+  const nextDay = [...(evs || []), ...(rooms || [])].map((e) => twParts(e.starts_at).date).filter((d) => d >= from).sort()[0];
   const pick = sessionStorage.getItem('evd') || nextDay || from;
   const shift = (n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
   setTimeout(() => {
@@ -221,19 +229,24 @@ route('/events', async () => {
     $$('[data-evm]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('evm', b.dataset.evm); sessionStorage.removeItem('evd'); render(); }));
     $$('[data-day]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('evd', b.dataset.day); render(); }));
     $('#add-ev')?.addEventListener('click', () => editEvent());
+    $$('[data-room-day]').forEach((a) => (a.onclick = () => sessionStorage.setItem('roomDay', a.dataset.roomDay)));
   });
   const head = pageHead('行事曆', '練習、分部課、教學班與演出，會同步到你的 Google 行事曆。',
     `<div class="seg"><button data-evf="month" aria-pressed="${filter === 'month'}">月曆</button><button data-evf="upcoming" aria-pressed="${filter === 'upcoming'}">接下來</button><button data-evf="past" aria-pressed="${filter === 'past'}">已結束</button></div>
      ${p.insider ? '<a class="btn" href="#/rooms">借教室</a>' : ''}${p.officer ? '<button class="btn pri" id="add-ev">＋ 新增行程</button>' : ''}`);
   if (filter === 'month') {
     const dayList = (evs || []).filter((e) => twParts(e.starts_at).date === pick);
+    const dayRooms = (rooms || []).filter((b) => twParts(b.starts_at).date === pick);
+    const n = dayList.length + dayRooms.length;
     const [, pm, pd] = pick.split('-').map(Number);
     return head + `<section class="card cal-card">
       <div class="cal-nav"><button class="icon-btn" data-evm="${shift(-1)}" aria-label="上個月">‹</button><h2>${+ym.slice(0, 4)} 年 ${+ym.slice(5)} 月</h2><button class="icon-btn" data-evm="${shift(1)}" aria-label="下個月">›</button>
         ${ym !== today.slice(0, 7) ? `<button class="btn sm ghost" data-evm="${today.slice(0, 7)}">回到本月</button>` : ''}</div>
-      ${monthGrid(ym, evs || [], lv, pick)}</section>
-      <section class="card"><div class="card-head"><h2>${pm}/${pd}（${twWeekday(twToIso(pick, '12:00'))}）</h2><span class="muted small">${dayList.length ? `${dayList.length} 個行程` : ''}</span></div>
-      ${dayList.length ? `<div class="ev-list">${dayList.map((e) => eventCard(e, { leave: lv.get(e.id) })).join('')}</div>` : '<p class="muted small">這天沒有行程。</p>'}</section>`;
+      ${monthGrid(ym, evs || [], lv, pick, rooms || [])}
+      ${p.insider ? '<p class="cal-key small muted"><span class="cal-ev kd-room">借 711</span> 是你自己借的教室，只有你看得到</p>' : ''}</section>
+      <section class="card"><div class="card-head"><h2>${pm}/${pd}（${twWeekday(twToIso(pick, '12:00'))}）</h2><span class="muted small">${n ? `${n} 個行程` : ''}</span></div>
+      ${dayRooms.length ? `<ul class="room-list my-rooms">${dayRooms.map((b) => `<li><span class="cal-ev kd-room">${roomLine(b)}</span> <span class="mono">${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}</span>${b.purpose ? ` <span class="muted small">${esc(b.purpose)}</span>` : ''} <a class="btn sm ghost" href="#/rooms" data-room-day="${pick}">看借教室</a></li>`).join('')}</ul>` : ''}
+      ${dayList.length ? `<div class="ev-list">${dayList.map((e) => eventCard(e, { leave: lv.get(e.id) })).join('')}</div>` : dayRooms.length ? '' : '<p class="muted small">這天沒有行程。</p>'}</section>`;
   }
   const groups = new Map();
   for (const e of evs || []) {

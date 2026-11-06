@@ -519,6 +519,10 @@ input.pick { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); 
 .cal-ev { --c: var(--accent); display: block; font-size: 12px; line-height: 1.35; padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-ev.kd-sectional { --c: var(--s-wind); } .cal-ev.kd-sizhu { --c: var(--s-bow); } .cal-ev.kd-class { --c: var(--jade); }
 .cal-ev.kd-concert, .cal-ev.kd-dress { --c: var(--bad); } .cal-ev.kd-officer { --c: var(--muted); }
+.cal-ev.kd-room { --c: var(--gold); outline: 1px dashed var(--gold); outline-offset: -1px; font-weight: 500; }
+.cal-key { margin: 10px 2px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cal-key .cal-ev { display: inline-block; }
+.my-rooms { margin-bottom: 10px; }
 .cal-ev.off { opacity: .45; text-decoration: line-through; }
 .cal-more { font-size: 11px; color: var(--muted); text-align: center; }
 @media (max-width: 560px) {
