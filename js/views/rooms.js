@@ -1,5 +1,5 @@
 // 借教室：710、711、118。社內的人登記時段；同一間同時段只能一個人，有社團行程（地點寫了這間）的時段不能借（資料庫會檔）
-import { sb, state, me, route, esc, run, toast, formDialog, pageHead, empty, chipPerson, fmtDate, fmtTime, render, $$, armDelete } from '../core.js';
+import { sb, state, me, route, esc, run, toast, errText, formDialog, pageHead, empty, chipPerson, fmtDate, fmtTime, render, $$, armDelete } from '../core.js';
 import { twParts, twToIso, twWeekday } from '../logic.js';
 
 export const ROOMS = ['710', '711', '118'];
@@ -9,22 +9,48 @@ const addDays = (date, n) => { const d = new Date(date + 'T12:00:00Z'); d.setUTC
 const pickDay = () => { const s = sessionStorage.getItem('roomDay'); return s && s >= today() && s <= addDays(today(), DAYS - 1) ? s : today(); };
 const hm = (iso) => fmtTime(iso);
 
+const MAX_TIMES = 16;  // 重複最多 16 次（約一學期）
+
 async function bookDialog(day, room = ROOMS[0]) {
   const v = await formDialog({
     title: '登記借教室',
     submit: '登記',
+    switchBy: 'repeat',
     fields: [
       { name: 'room', label: '教室', type: 'select', value: room, options: ROOMS.map((r) => [r, r]) },
       { name: 'date', label: '日期', type: 'date', value: day, required: true },
       { name: 'from', label: '開始', type: 'time', value: '12:00', required: true },
       { name: 'to', label: '結束', type: 'time', value: '13:00', required: true },
+      { name: 'repeat', label: '重複', type: 'select', value: '0', options: [['0', '不重複'], ['1', '每週'], ['2', '每兩週']] },
+      { name: 'times', label: '共借幾次（含這次）', type: 'number', value: 4, min: 2, only: ['1', '2'] },
       { name: 'purpose', label: '用途（選填）', value: '', placeholder: '例：二胡個練、彈撥小組練', full: true },
     ],
-    validate: (x) => (x.to <= x.from ? '結束時間要比開始晚' : null),
+    validate: (x) => x.to <= x.from ? '結束時間要比開始晚'
+      : x.repeat !== '0' && !(x.times >= 2 && x.times <= MAX_TIMES) ? `重複次數請填 2 到 ${MAX_TIMES} 次` : null,
   });
   if (!v) return;
-  const ok = await run(() => sb.from('room_bookings').insert({ room: v.room, user_id: me(), starts_at: twToIso(v.date, v.from), ends_at: twToIso(v.date, v.to), purpose: v.purpose.trim() }), `已登記 ${v.room}`);
-  if (ok) { sessionStorage.setItem('roomDay', v.date); render(); }
+  const row = (date) => ({ room: v.room, user_id: me(), starts_at: twToIso(date, v.from), ends_at: twToIso(date, v.to), purpose: v.purpose.trim() });
+  if (v.repeat === '0') {
+    const ok = await run(() => sb.from('room_bookings').insert(row(v.date)), `已登記 ${v.room}`);
+    if (ok) { sessionStorage.setItem('roomDay', v.date); render(); }
+    return;
+  }
+  // 重複：一次一筆，撞到的那幾天跳過，最後告訴他哪幾天沒借到
+  const dates = Array.from({ length: v.times }, (_, i) => addDays(v.date, i * 7 * Number(v.repeat)));
+  const failed = [];
+  for (const d of dates) {
+    const { error } = await sb.from('room_bookings').insert(row(d));
+    if (error) failed.push([`${+d.slice(5, 7)}/${+d.slice(8)}（週${twWeekday(d + 'T12:00:00+08:00')}）`, errText(error)]);
+  }
+  sessionStorage.setItem('roomDay', v.date);
+  render();
+  const got = dates.length - failed.length;
+  if (!failed.length) return toast(`已登記 ${v.room}，共 ${got} 次`, 'ok');
+  await formDialog({
+    title: got ? `借到 ${got} 次，有 ${failed.length} 次沒借到` : '都沒有借到',
+    submit: '知道了',
+    fields: [{ name: 'x', type: 'info', rows: failed }],
+  });
 }
 
 route('/rooms', async () => {
