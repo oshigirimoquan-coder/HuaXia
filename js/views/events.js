@@ -136,18 +136,21 @@ export async function leaveDialog(ev, cur) {
     submit: '送出',
     switchBy: 'type',
     fields: [
-      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假、公假不列入出席率；病假要附證明，公假要先私訊團長；事假依社團規定計算' },
+      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假、公假不列入出席率；病假要附證明，公假和事假要先私訊團長；事假依社團規定計算' },
       { name: 'at', label: '幾點到／幾點走', type: 'time', value: m?.[1] || '', only: ['late', 'early'], hint: '晚到填預計幾點到，早退填預計幾點走' },
       { name: 'proof', label: '病假證明（診斷證明、藥袋、掛號單的照片）', type: 'photos', full: true, only: ['sick'], value: oldProofs.map((path, i) => ({ path, url: signed[i]?.signedUrl || '' })) },
       { name: 'proof_dm', type: 'toggle', text: '不方便上傳，已私訊團長提供證明', value: cur?.type === 'sick' && cur?.proof_dm, only: ['sick'], full: true },
       { type: 'note', text: '公假（學校活動、比賽、系上公務等）請先私訊團長說明，再勾選下面這格。', only: ['official'] },
       { name: 'official_dm', type: 'toggle', text: '我已私訊團長說明公假', value: cur?.type === 'official' && cur?.proof_dm, only: ['official'], full: true },
+      { type: 'note', text: '事假請先私訊團長說明，再勾選下面這格。', only: ['leave'] },
+      { name: 'leave_dm', type: 'toggle', text: '我已私訊團長說明事假', value: cur?.type === 'leave' && cur?.proof_dm, only: ['leave'], full: true },
       { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, full: true, placeholder: '例：期中考、家教卡到、發燒' },
     ],
     validate: (x) => {
       if ((x.type === 'late' || x.type === 'early') && !x.at) return x.type === 'late' ? '請填預計幾點到' : '請填預計幾點走';
       if (x.type === 'sick' && !x.proof_dm && !(x.proof.keep.length + x.proof.files.length)) return '病假要上傳證明照片，或勾選「已私訊團長」';
       if (x.type === 'official' && !x.official_dm) return '公假請先私訊團長，再勾選「我已私訊團長說明公假」';
+      if (x.type === 'leave' && !x.leave_dm) return '事假請先私訊團長，再勾選「我已私訊團長說明事假」';
       return null;
     },
   });
@@ -158,7 +161,7 @@ export async function leaveDialog(ev, cur) {
     return render();
   }
   const reason = v.type === 'late' || v.type === 'early' ? `【${v.at} ${v.type === 'late' ? '到' : '走'}】${v.reason}` : v.reason;
-  let proofs = [], dm = v.type === 'official' ? v.official_dm : false;
+  let proofs = [], dm = v.type === 'official' ? v.official_dm : v.type === 'leave' ? v.leave_dm : false;
   if (v.type === 'sick') {
     dm = v.proof_dm;
     proofs = [...v.proof.keep];
@@ -291,8 +294,8 @@ route('/events/:id', async ({ id }) => {
   // 這場的事先回覆與出席率（幹部）
   const rateRow = canRoll && ev.semester_id ? ((await sb.rpc('event_rates', { sem: ev.semester_id })).data || []).find((r) => r.event_id === id) : null;
   // 病假證明（只有幹部、組長讀得到別人的）
-  const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official'].includes(r.leave_type))
-    ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official'])).data || []).map((x) => [x.user_id, x]) : []);
+  const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
+    ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official', 'leave'])).data || []).map((x) => [x.user_id, x]) : []);
   const mine = roster.find((r) => r.user_id === me());
   const expectedMe = mine?.expected;
 
@@ -351,7 +354,7 @@ route('/events/:id', async ({ id }) => {
         <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
       ${rateRow ? `<p class="ev-rate">事先回覆：${replyLine(rateRow)}${rateRow.marked && rateRow.rate != null ? `　<span class="rate rate-${rateLevel(Number(rateRow.rate))}">本場出席率 <b class="mono">${Math.round(rateRow.rate)}%</b></span>` : ''}</p>` : ''}
       <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。病假要附證明、公假要私訊團長，不符合的可以改標「事假」。</p>
-      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick', 'official'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${['sick', 'official'].includes(r.leave_type) ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
+      ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick', 'official'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${['sick', 'official', 'leave'].includes(r.leave_type) ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';
         return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${r.expected ? '' : ' <span class="chip">非應到</span>'}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>
