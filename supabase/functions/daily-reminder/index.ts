@@ -1,5 +1,6 @@
 // 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務；
-// 三天後：到還有人沒回覆的那幾組頻道問一次（不 @ 人）；明天：還沒回覆的人到他那組的頻道 @ 他。都附「確定會去」「請假」按鈕
+// 每週日：把下週一到週日要算出席的行程，在還有人沒回覆的那幾組頻道問一次（不 @ 人），一場一個「確定會去」按鈕；
+// 明天：還沒回覆的人到他那組的頻道 @ 他，附「確定會去」「請假」按鈕
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
 import { admin, cors, discord, json, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
 
@@ -9,7 +10,7 @@ Deno.serve(async (req) => {
   const db = admin();
   const SITE = Deno.env.get("SITE_URL") ?? "";
 
-  // 台北時間的「明天」與「三天後」
+  // 台北時間的「明天」（週日另外看下週一到週日）
   const twDay = (n: number) => { const t = new Date(Date.now() + 8 * 3600e3); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   const range = (d: string) => [new Date(`${d}T00:00:00+08:00`).toISOString(), new Date(`${d}T23:59:59+08:00`).toISOString()];
   const day = twDay(1);
@@ -42,34 +43,58 @@ Deno.serve(async (req) => {
   const WK = "日一二三四五六";
   const md = (iso: string) => { const t = new Date(new Date(iso).getTime() + 8 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WK[t.getUTCDay()]}）`; };
   let nagged = 0;
-  async function nag(e: any, when: string, mention: boolean) {
+  // 還沒回覆的人依組別分（分部課先算這次上課的組）；沒設定組頻道的發到公告頻道
+  async function unansweredBySec(e: any) {
     const { data: rows } = await db.rpc("unanswered", { eid: e.id });
-    if (!rows?.length) return;
-    const { data: ids } = await db.rpc("discord_ids", { uids: rows.map((r: any) => r.user_id) });
-    const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
     const evSecs: string[] = kindsOf(e).includes("sectional") ? (e.sections?.length ? e.sections : [e.section]) : [];
     const bySec = new Map<string, any[]>();
-    for (const r of rows) {
+    for (const r of rows ?? []) {
       const secs: string[] = r.sections ?? [];
       const sec = secs.find((s) => evSecs.includes(s)) ?? secs[0] ?? "";
       if (!bySec.has(sec)) bySec.set(sec, []);
       bySec.get(sec)!.push(r);
     }
+    return bySec;
+  }
+  const hookOf = (sec: string) => hooks.sections?.[sec] ?? hooks.announce;
+
+  // 明天：@ 還沒回覆的人
+  for (const e of pub.filter((x) => x.counts_attendance)) {
+    const bySec = await unansweredBySec(e);
+    if (!bySec.size) continue;
+    const all = [...bySec.values()].flat();
+    const { data: ids } = await db.rpc("discord_ids", { uids: all.map((r: any) => r.user_id) });
+    const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
     const buttons: [string, string][] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
     for (const [sec, list] of bySec) {
-      const users = mention ? list.map((r) => did.get(r.user_id)).filter(Boolean) as string[] : [];
+      const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
-      const text = mention
-        ? `**${when} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`
-        : `**${when} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？\n還沒回覆的人請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
-      if (await discord(hooks.sections?.[sec] ?? hooks.announce, text, { users }, buttons)) nagged += list.length;
+      const text = `**明天 ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
+      if (await discord(hookOf(sec), text, { users: users.slice(0, 100) }, buttons)) nagged += list.length;
     }
   }
-  for (const e of pub.filter((x) => x.counts_attendance)) await nag(e, `明天 ${md(e.starts_at)}`, true);
-  // 三天後的行程：先問一次，不 @ 人
-  const [f3, t3] = range(twDay(3));
-  const { data: ev3 } = await db.from("events").select("*").gte("starts_at", f3).lte("starts_at", t3).eq("counts_attendance", true).order("starts_at");
-  for (const e of (ev3 ?? []).filter((x) => !officerOnly(x))) await nag(e, md(e.starts_at), false);
+
+  // 每週日：下週的行程一次問完，不 @ 人，一場一個按鈕
+  let weekly = 0;
+  if (new Date(Date.now() + 8 * 3600e3).getUTCDay() === 0) {
+    const [wf] = range(twDay(1)), [, wt] = range(twDay(7));
+    const { data: wk } = await db.from("events").select("*").gte("starts_at", wf).lte("starts_at", wt).eq("counts_attendance", true).order("starts_at");
+    const byHook = new Map<string, any[]>();
+    for (const e of (wk ?? []).filter((x) => !officerOnly(x))) {
+      for (const sec of (await unansweredBySec(e)).keys()) {
+        const h = hookOf(sec);
+        if (!h) continue;
+        if (!byHook.has(h)) byHook.set(h, []);
+        if (!byHook.get(h)!.includes(e)) byHook.get(h)!.push(e);
+      }
+    }
+    for (const [h, list] of byHook) {
+      const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}（${kindText(e)}）`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
+      const buttons: [string, string][] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)} ${e.title}`, `${SITE}#/events/${e.id}/yes`]) : [];
+      if (await discord(h, text, {}, buttons)) weekly++;
+    }
+  }
+  if (weekly) sent.push(`weekly:${weekly}`);
   if (nagged) sent.push(`unanswered:${nagged}`);
 
   const { data: tasks } = await db.from("tasks").select("title, due").eq("due", day).neq("status", "done");

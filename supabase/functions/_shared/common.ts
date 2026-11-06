@@ -85,7 +85,8 @@ export async function discord(url: string | undefined, content: string, mention:
     body: JSON.stringify({
       content: content.slice(0, 1990),
       allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] },
-      ...(withButtons ? { components: [{ type: 1, components: buttons.slice(0, 5).map(([label, u]) => ({ type: 2, style: 5, label, url: u })) }] } : {}),
+      // 一排最多 5 個按鈕、最多 5 排
+      ...(withButtons ? { components: Array.from({ length: Math.ceil(Math.min(buttons.length, 25) / 5) }, (_, i) => ({ type: 1, components: buttons.slice(i * 5, i * 5 + 5).map(([label, u]) => ({ type: 2, style: 5, label: label.slice(0, 80), url: u })) })) } : {}),
     }),
   });
   if (buttons.length) {
