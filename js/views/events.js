@@ -259,6 +259,22 @@ route('/events', async () => {
       : empty(filter === 'past' ? '還沒有已結束的行程' : '接下來沒有行程', p.officer ? '按「新增行程」建立第一次練習，系統會自動同步到大家的行事曆。' : '幹部建立行程後會出現在這裡。'));
 });
 
+// Discord 提醒的「確定會去」按鈕：打開就幫他按出席，再回到這場的頁面（已經請假的不動）
+route('/events/:id/yes', async ({ id }) => {
+  const back = () => location.replace(`#/events/${id}`);
+  const [{ data: ev }, { data: row }] = await Promise.all([
+    sb.from('events').select('id, starts_at').eq('id', id).maybeSingle(),
+    sb.from('leave_requests').select('*').eq('event_id', id).eq('user_id', me()).maybeSingle(),
+  ]);
+  if (!ev) { setTimeout(back); return ''; }
+  if (daysFromToday(ev.starts_at) < 0) toast('這場已經結束了');
+  else if (isAttend(row)) toast('你已經確認會去了', 'ok');
+  else if (row) toast(`你已經${LEAVE_LABEL[row.type] || '請假'}了，要改的話在這頁修改`);
+  else await run(() => sb.from('leave_requests').upsert({ event_id: id, user_id: me(), type: 'attend', reason: '' }), '已確認會去，到時見！');
+  setTimeout(back);
+  return '';
+});
+
 route('/events/:id', async ({ id }) => {
   const p = state.p;
   const { data: ev } = await sb.from('events').select('*').eq('id', id).maybeSingle();

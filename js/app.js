@@ -182,8 +182,11 @@ async function boot() {
   if (!state.session) {
     const { data } = await sb.from('settings').select('*').eq('key', 'team_name').maybeSingle();
     if (data) state.settings.team_name = data.value;
+    // 記住原本要去的頁面（例如 Discord「確定會去」按鈕），登入後再帶回去
+    if (/^#\/\w/.test(location.hash)) try { sessionStorage.setItem('afterLogin', location.hash); } catch {}
     return authScreen('login', firstVisit());
   }
+  try { const to = sessionStorage.getItem('afterLogin'); if (to) { sessionStorage.removeItem('afterLogin'); history.replaceState(null, '', to); } } catch {}
   await loadMe();
   if (!state.profile || state.profile.status !== 'active') return waitingScreen();
   await loadShared();

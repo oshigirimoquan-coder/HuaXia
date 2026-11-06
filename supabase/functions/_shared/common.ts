@@ -76,14 +76,24 @@ export async function gcal(path: string, method = "GET", body?: unknown) {
 }
 
 // ---------- Discord ----------
-export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}) {
+// buttons：連結按鈕（[文字, 網址]）。Discord 一般 webhook 要加 ?with_components=true 才能放按鈕；送失敗就改成不帶按鈕再送一次
+export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}, buttons: [string, string][] = []) {
   if (!url) return false;
-  const res = await fetch(url, {
+  const send = (withButtons: boolean) => fetch(withButtons ? `${url}${url.includes("?") ? "&" : "?"}with_components=true` : url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: content.slice(0, 1990), allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] } }),
+    body: JSON.stringify({
+      content: content.slice(0, 1990),
+      allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] },
+      ...(withButtons ? { components: [{ type: 1, components: buttons.slice(0, 5).map(([label, u]) => ({ type: 2, style: 5, label, url: u })) }] } : {}),
+    }),
   });
-  return res.ok;
+  if (buttons.length) {
+    const res = await send(true);
+    if (res.ok) return true;
+    content += "\n" + buttons.map(([l, u]) => `${l}：${u}`).join("\n");
+  }
+  return (await send(false)).ok;
 }
 
 export const KIND: Record<string, string> = {
