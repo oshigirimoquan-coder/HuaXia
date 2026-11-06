@@ -16,6 +16,7 @@ import { joinScreen } from './views/recruit.js';
 import { SHARE_CATS } from './views/announcements.js';
 
 import './views/groups.js';
+import './views/rooms.js';
 
 // 2026-10 改版：主分頁五格（手機在底部、電腦在上方）；其他功能收進右上角頭像選單
 const ICON = {
@@ -29,7 +30,7 @@ const icon = (k) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${IC
 const TABS = [
   { path: '/', label: '首頁', icon: 'home', also: ['/attendance'] },
   { path: '/announcements', label: '公告', icon: 'ann', badge: 'main', also: ['/sizhu', '/concerts', '/alumni', '/resources', '/tools'] },
-  { path: '/events', label: '行事曆', icon: 'cal' },
+  { path: '/events', label: '行事曆', icon: 'cal', also: ['/rooms'] },
   { path: '/groups', label: '各組', icon: 'groups', also: ['/teaching'] },
   { path: '/pieces', label: '樂譜與編制', icon: 'score' },
 ];
@@ -37,6 +38,7 @@ const MENU = [
   { path: '/me', label: '我的設定', group: '個人' },
   { path: '/attendance', label: '出席明細', group: '個人', show: (p) => !p.ringerOnly },
   { path: '/members', label: '成員', group: '社團', show: (p) => p.insider },
+  { path: '/rooms', label: '借教室', group: '社團', show: (p) => p.insider },
   { path: '/attendance/all', label: '出席率總表', group: '幹部', show: (p) => p.officer || p.leader },
   { path: '/ringers', label: '槍手', group: '幹部', show: (p) => p.officer },
   { path: '/recruit', label: '招生', group: '幹部', show: (p) => p.officer },

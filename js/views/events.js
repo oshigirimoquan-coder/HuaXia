@@ -224,7 +224,7 @@ route('/events', async () => {
   });
   const head = pageHead('行事曆', '練習、分部課、教學班與演出，會同步到你的 Google 行事曆。',
     `<div class="seg"><button data-evf="month" aria-pressed="${filter === 'month'}">月曆</button><button data-evf="upcoming" aria-pressed="${filter === 'upcoming'}">接下來</button><button data-evf="past" aria-pressed="${filter === 'past'}">已結束</button></div>
-     ${p.officer ? '<button class="btn pri" id="add-ev">＋ 新增行程</button>' : ''}`);
+     ${p.insider ? '<a class="btn" href="#/rooms">借教室</a>' : ''}${p.officer ? '<button class="btn pri" id="add-ev">＋ 新增行程</button>' : ''}`);
   if (filter === 'month') {
     const dayList = (evs || []).filter((e) => twParts(e.starts_at).date === pick);
     const [, pm, pd] = pick.split('-').map(Number);

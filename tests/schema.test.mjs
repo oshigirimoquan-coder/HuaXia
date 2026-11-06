@@ -873,3 +873,24 @@ test('總彩、公演有指定曲目：只有排進這些曲目的人要到', as
     assert.equal(await exp(e, C), false);   // 沒排進 P1
   }
 });
+
+test('借教室：社員可以借；同一間同時段不能重複；有社團行程的時段不能借；只能取消自己的（幹部都可以）；槍手不能借', async () => {
+  const C = '00000000-0000-0000-0000-0000000000e3';
+  const ok = await as(B, `insert into room_bookings (room,starts_at,ends_at,purpose) values ('710','2026-12-23 12:00+08','2026-12-23 13:00+08','練二胡')`);
+  assert.ok(!ok.error, ok.error);
+  const dup = await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('710','2026-12-23 12:30+08','2026-12-23 14:00+08')`);
+  assert.match(String(dup.error || ''), /已經被/);                                 // 同一間重疊
+  assert.ok(!(await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('711','2026-12-23 12:30+08','2026-12-23 14:00+08')`)).error);   // 別間可以
+  assert.ok(!(await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('710','2026-12-23 13:00+08','2026-12-23 14:00+08')`)).error);   // 接在後面可以
+  await as(A, `insert into events (semester_id,kinds,title,starts_at,ends_at,calendar_key,location) values
+    ('${S}',array['sectional'],'彈撥分部課','2026-12-24 19:00+08','2026-12-24 21:00+08','tutti','綜院 118')`);
+  const ev = await as(B, `insert into room_bookings (room,starts_at,ends_at) values ('118','2026-12-24 20:00+08','2026-12-24 22:00+08')`);
+  assert.match(String(ev.error || ''), /社團行程/);                               // 有行程的時段
+  assert.ok((await as(B, `insert into room_bookings (room,starts_at,ends_at) values ('118','2020-01-01 10:00+08','2020-01-01 11:00+08')`)).error);   // 過去的時段
+  assert.ok((await as(R, `insert into room_bookings (room,starts_at,ends_at) values ('118','2026-12-25 10:00+08','2026-12-25 11:00+08')`)).error);   // 槍手不能借
+  const mine = (await as(B, `select id from room_bookings where user_id='${B}'`)).rows[0].id;
+  await as(C, `delete from room_bookings where id='${mine}'`);
+  assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 1);   // 別人刪不掉
+  await as(A, `delete from room_bookings where id='${mine}'`);
+  assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 0);   // 幹部可以
+});
