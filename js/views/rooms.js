@@ -10,6 +10,13 @@ const pickDay = () => { const s = sessionStorage.getItem('roomDay'); return s &&
 const hm = (iso) => fmtTime(iso);
 
 const MAX_TIMES = 16;  // 重複最多 16 次（約一學期）
+const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 864e5);
+const repeatDates = (x) => {
+  const step = 7 * Number(x.repeat);
+  if (!step) return [x.date];
+  const n = Math.floor(daysBetween(x.date, x.until) / step) + 1;
+  return Array.from({ length: Math.max(n, 0) }, (_, i) => addDays(x.date, i * step));
+};
 
 async function bookDialog(day, room = ROOMS[0]) {
   const v = await formDialog({
@@ -22,21 +29,24 @@ async function bookDialog(day, room = ROOMS[0]) {
       { name: 'from', label: '開始', type: 'time', value: '12:00', required: true },
       { name: 'to', label: '結束', type: 'time', value: '13:00', required: true },
       { name: 'repeat', label: '重複', type: 'select', value: '0', options: [['0', '不重複'], ['1', '每週'], ['2', '每兩週']] },
-      { name: 'times', label: '共借幾次（含這次）', type: 'number', value: 4, min: 2, only: ['1', '2'] },
+      { name: 'until', label: '重複到哪一天', type: 'date', value: addDays(day, 28), only: ['1', '2'] },
       { name: 'purpose', label: '用途（選填）', value: '', placeholder: '例：二胡個練、彈撥小組練', full: true },
     ],
     validate: (x) => x.to <= x.from ? '結束時間要比開始晚'
-      : x.repeat !== '0' && !(x.times >= 2 && x.times <= MAX_TIMES) ? `重複次數請填 2 到 ${MAX_TIMES} 次` : null,
+      : x.repeat === '0' ? null
+      : !x.until || x.until <= x.date ? '「重複到哪一天」要比日期晚'
+      : repeatDates(x).length > MAX_TIMES ? `一次最多重複 ${MAX_TIMES} 次，請把「重複到哪一天」提早一點` : null,
   });
   if (!v) return;
-  const row = (date) => ({ room: v.room, user_id: me(), starts_at: twToIso(date, v.from), ends_at: twToIso(date, v.to), purpose: v.purpose.trim() });
+  const series = v.repeat === '0' ? null : crypto.randomUUID();
+  const row = (date) => ({ room: v.room, user_id: me(), series_id: series, starts_at: twToIso(date, v.from), ends_at: twToIso(date, v.to), purpose: v.purpose.trim() });
   if (v.repeat === '0') {
     const ok = await run(() => sb.from('room_bookings').insert(row(v.date)), `已登記 ${v.room}`);
     if (ok) { sessionStorage.setItem('roomDay', v.date); render(); }
     return;
   }
   // 重複：一次一筆，撞到的那幾天跳過，最後告訴他哪幾天沒借到
-  const dates = Array.from({ length: v.times }, (_, i) => addDays(v.date, i * 7 * Number(v.repeat)));
+  const dates = repeatDates(v);
   const failed = [];
   for (const d of dates) {
     const { error } = await sb.from('room_bookings').insert(row(d));
@@ -66,15 +76,30 @@ route('/rooms', async () => {
   setTimeout(() => {
     $$('[data-day]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('roomDay', b.dataset.day); render(); }));
     $$('[data-book]').forEach((b) => (b.onclick = () => bookDialog(day, b.dataset.book)));
-    // 按兩下才取消（第一下變成「確定取消？」）
+    // 單次：按兩下才取消（第一下變成「確定取消？」）；重複的：問要只取消這次，還是這次和之後全部
+    const byId = new Map([...(bookings || []), ...(mine || [])].map((x) => [x.id, x]));
     $$('[data-cancel]').forEach((b) => (b.onclick = async () => {
-      if (!armDelete(b, '確定取消？')) return;
-      if (await run(() => sb.from('room_bookings').delete().eq('id', b.dataset.cancel), '已取消')) render();
+      const bk = byId.get(b.dataset.cancel);
+      if (!bk?.series_id) {
+        if (!armDelete(b, '確定取消？')) return;
+        if (await run(() => sb.from('room_bookings').delete().eq('id', bk.id), '已取消')) render();
+        return;
+      }
+      const c = await formDialog({
+        title: '取消重複的借用', submit: '只取消這次', danger: '這次和之後全部',
+        fields: [{ type: 'note', text: `${bk.room}　${fmtDate(bk.starts_at)} ${hm(bk.starts_at)}–${hm(bk.ends_at)}　這是重複的借用。` }],
+      });
+      if (!c) return;
+      const q = sb.from('room_bookings').delete();
+      const ok = c.__danger
+        ? await run(() => q.eq('series_id', bk.series_id).gte('starts_at', bk.starts_at), '已取消這次和之後的借用')
+        : await run(() => q.eq('id', bk.id), '已取消這次');
+      if (ok) render();
     }));
   });
   const days = Array.from({ length: DAYS }, (_, i) => addDays(today(), i));
   const canCancel = (b) => b.user_id === me() || p.officer;
-  const item = (b) => `<li><span class="mono">${hm(b.starts_at)}–${hm(b.ends_at)}</span> ${chipPerson(b.user_id)}${b.purpose ? ` <span class="muted small">${esc(b.purpose)}</span>` : ''}
+  const item = (b) => `<li><span class="mono">${hm(b.starts_at)}–${hm(b.ends_at)}</span> ${chipPerson(b.user_id)}${b.series_id ? ' <span class="chip" title="重複借用">↻ 重複</span>' : ''}${b.purpose ? ` <span class="muted small">${esc(b.purpose)}</span>` : ''}
     ${canCancel(b) ? `<button class="btn sm ghost" data-cancel="${b.id}">取消</button>` : ''}</li>`;
   const evItem = (e) => `<li class="room-ev"><span class="mono">${hm(e.starts_at)}–${hm(e.ends_at)}</span> <a href="#/events/${e.id}">${esc(e.title)}</a> <span class="chip">社團行程</span></li>`;
   return pageHead('借教室', '710、711、118 只有社員能借。同一間同一時段只能一個人；有社團行程的時段不能借。',
@@ -88,7 +113,7 @@ route('/rooms', async () => {
         ${rows.length ? `<ul class="room-list">${rows.join('')}</ul>` : '<p class="small muted">這天整天都可以借。</p>'}</section>`;
     }).join('')}</div>` +
     `<section class="card"><div class="card-head"><h2>我的借用</h2></div>${mine?.length
-      ? `<ul class="room-list">${mine.map((b) => `<li><b>${b.room}</b> <span class="mono">${fmtDate(b.starts_at)} ${hm(b.starts_at)}–${hm(b.ends_at)}</span>${b.purpose ? ` <span class="muted small">${esc(b.purpose)}</span>` : ''}
+      ? `<ul class="room-list">${mine.map((b) => `<li><b>${b.room}</b> <span class="mono">${fmtDate(b.starts_at)} ${hm(b.starts_at)}–${hm(b.ends_at)}</span>${b.series_id ? ' <span class="chip" title="重複借用">↻ 重複</span>' : ''}${b.purpose ? ` <span class="muted small">${esc(b.purpose)}</span>` : ''}
           <button class="btn sm ghost" data-cancel="${b.id}">取消</button></li>`).join('')}</ul>`
       : '<p class="small muted">還沒有借用。</p>'}</section>`;
 });

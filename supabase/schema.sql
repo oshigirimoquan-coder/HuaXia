@@ -1374,6 +1374,9 @@ create table if not exists public.room_bookings (
   check (ends_at - starts_at <= interval '6 hours')
 );
 create index if not exists room_bookings_time on public.room_bookings (room, starts_at);
+-- 重複借用（每週、每兩週）：同一串用同一個 series_id，可以「只取消這次」或「這次和之後全部」
+alter table public.room_bookings add column if not exists series_id uuid;
+create index if not exists room_bookings_series on public.room_bookings (series_id) where series_id is not null;
 alter table public.room_bookings enable row level security;
 grant select, insert, update, delete on public.room_bookings to authenticated;
 

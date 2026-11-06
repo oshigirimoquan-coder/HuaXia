@@ -893,4 +893,9 @@ test('借教室：社員可以借；同一間同時段不能重複；有社團�
   assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 1);   // 別人刪不掉
   await as(A, `delete from room_bookings where id='${mine}'`);
   assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 0);   // 幹部可以
+  // 重複借用：這次和之後全部
+  const SER = '00000000-0000-4000-8000-0000000000aa';
+  for (const d of ['2027-01-05', '2027-01-12', '2027-01-19']) assert.ok(!(await as(B, `insert into room_bookings (room,starts_at,ends_at,series_id) values ('711','${d} 18:00+08','${d} 19:00+08','${SER}')`)).error);
+  await as(B, `delete from room_bookings where series_id='${SER}' and starts_at >= '2027-01-12 18:00+08'`);
+  assert.equal((await as(B, `select count(*)::int n from room_bookings where series_id='${SER}'`)).rows[0].n, 1);
 });
