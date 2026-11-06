@@ -639,7 +639,11 @@ begin
     if k = 'officer' then
       if exists (select 1 from user_roles where user_id = uid and role in ('admin','officer')) then return true; end if;
     elsif k = 'sectional' then
-      if exists (select 1 from profiles where id = uid and (case when cardinality(sections) > 0 then sections else array[section] end) && (case when cardinality(e.sections) > 0 then e.sections else array[e.section] end)) then return true; end if;
+      -- 分部課：要是那一組的人；有指定這次練習的曲目時，還要排進這些曲目的編制
+      if exists (select 1 from profiles where id = uid and (case when cardinality(sections) > 0 then sections else array[section] end) && (case when cardinality(e.sections) > 0 then e.sections else array[e.section] end))
+        and (not has_pieces or exists (select 1 from event_pieces ep join piece_parts pp on pp.piece_id = ep.piece_id
+          join part_assignments pa on pa.part_id = pp.id left join ringers r on r.id = pa.ringer_id
+          where ep.event_id = e.id and (pa.user_id = uid or r.user_id = uid))) then return true; end if;
     elsif k = 'class' then
       if exists (select 1 from class_students where class_id = e.class_id and user_id = uid) then return true; end if;
     elsif has_pieces then
@@ -1357,3 +1361,54 @@ from l where p.id = l.user_id and position('組長' in p.officer_title) = 0;
 insert into public.user_roles (user_id, role) select user_id, 'officer' from public.user_roles where role = 'leader' on conflict do nothing;
 delete from public.user_roles where role = 'leader';
 
+-- ---------- 借教室（710、711、118）：社內的人登記，同一間同時段只能一個人；社團行程地點寫了這間教室的時段也不能借 ----------
+create table if not exists public.room_bookings (
+  id uuid primary key default gen_random_uuid(),
+  room text not null check (room in ('710','711','118')),
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  user_id uuid not null default auth.uid() references public.profiles(id) on delete cascade,
+  purpose text not null default '',
+  created_at timestamptz not null default now(),
+  check (ends_at > starts_at),
+  check (ends_at - starts_at <= interval '6 hours')
+);
+create index if not exists room_bookings_time on public.room_bookings (room, starts_at);
+alter table public.room_bookings enable row level security;
+grant select, insert, update, delete on public.room_bookings to authenticated;
+
+create or replace function public.check_room_booking() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare clash record;
+begin
+  if tg_op = 'INSERT' and new.starts_at < now() - interval '1 hour' then
+    raise exception '不能登記已經過去的時段';
+  end if;
+  select b.starts_at, b.ends_at, coalesce(nullif(p.display_name, ''), '有人') as who into clash
+  from room_bookings b left join profiles p on p.id = b.user_id
+  where b.room = new.room and b.id <> new.id and b.starts_at < new.ends_at and b.ends_at > new.starts_at limit 1;
+  if found then
+    raise exception '% 這個時段已經被 % 借了（% – %）', new.room, clash.who,
+      to_char(clash.starts_at at time zone 'Asia/Taipei', 'HH24:MI'), to_char(clash.ends_at at time zone 'Asia/Taipei', 'HH24:MI');
+  end if;
+  select e.title, e.starts_at, e.ends_at into clash from events e
+  where e.location ilike '%' || new.room || '%' and e.starts_at < new.ends_at and e.ends_at > new.starts_at limit 1;
+  if found then
+    raise exception '% 這個時段有社團行程「%」（% – %）', new.room, clash.title,
+      to_char(clash.starts_at at time zone 'Asia/Taipei', 'HH24:MI'), to_char(clash.ends_at at time zone 'Asia/Taipei', 'HH24:MI');
+  end if;
+  return new;
+end $$;
+drop trigger if exists check_room_booking on public.room_bookings;
+create trigger check_room_booking before insert or update on public.room_bookings
+  for each row execute function public.check_room_booking();
+
+drop policy if exists rooms_read on public.room_bookings;
+drop policy if exists rooms_insert on public.room_bookings;
+drop policy if exists rooms_update on public.room_bookings;
+drop policy if exists rooms_delete on public.room_bookings;
+create policy rooms_read on public.room_bookings for select using (public.is_insider());
+create policy rooms_insert on public.room_bookings for insert with check (public.is_insider() and user_id = auth.uid());
+create policy rooms_update on public.room_bookings for update using (user_id = auth.uid() or public.is_officer())
+  with check (user_id = auth.uid() or public.is_officer());
+create policy rooms_delete on public.room_bookings for delete using (user_id = auth.uid() or public.is_officer());

@@ -641,3 +641,16 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 .grp-people .good-att { margin-left: 6px; font-size: .72rem; }
 .honor .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .ev-rate { font-size: 14px; margin: 0 0 10px; }
+
+/* 借教室 */
+.day-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 14px; }
+.day-strip button { flex: 0 0 auto; display: grid; gap: 2px; min-width: 56px; padding: 8px 6px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: center; }
+.day-strip button small { font-size: 11px; color: var(--muted); }
+.day-strip button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.day-strip button[aria-selected="true"] small { color: inherit; opacity: .85; }
+.room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.room h2 { font-family: var(--f-mono); font-size: 22px; }
+.room-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.room-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; border-radius: 10px; background: var(--sunk); }
+.room-list li .btn { margin-left: auto; }
+.room-ev { opacity: .85; }

@@ -844,3 +844,53 @@ test('每場出席率：幹部看得到每一場的應到、事先回覆與點�
   assert.ok(f.expected >= 1 && f.said_late === 1 && f.no_reply === f.expected - 1);
   assert.equal((await as(B, `select * from event_rates('${S}')`)).rows.length, 0);
 });
+
+test('分部課有指定曲目：只有那一組、而且排進這些曲目的人要到；沒指定曲目就整組都要到', async () => {
+  const ES = '55555555-5555-5555-5555-5555555555e1', EN = '55555555-5555-5555-5555-5555555555e2';
+  const C = '00000000-0000-0000-0000-0000000000e3';   // 拉弦社員，沒排進 P1
+  await db.exec(`insert into auth.users values ('${C}','c@x','{}')`);
+  await as(A, `update profiles set status='active', sections=array['拉弦'] where id='${C}'; insert into user_roles values ('${C}','member');
+    insert into events (id,semester_id,kinds,sections,title,starts_at,ends_at,calendar_key) values
+      ('${ES}','${S}',array['sectional'],array['拉弦'],'拉弦分部（泰芙努特）','2026-12-20 10:00+08','2026-12-20 12:00+08','tutti'),
+      ('${EN}','${S}',array['sectional'],array['拉弦'],'拉弦分部（沒指定曲目）','2026-12-21 10:00+08','2026-12-21 12:00+08','tutti');
+    insert into event_pieces values ('${ES}','${P1}')`);
+  const exp = async (eid, uid) => (await as(A, `select public.is_expected(e, '${uid}') as ok from events e where e.id='${eid}'`)).rows[0].ok;
+  assert.equal(await exp(ES, B), true);    // B：拉弦，排在 P1 的二胡I
+  assert.equal(await exp(ES, C), false);   // C：拉弦，但沒排進 P1
+  assert.equal(await exp(EN, C), true);    // 沒指定曲目：整組都要到
+});
+
+test('總彩、公演有指定曲目：只有排進這些曲目的人要到', async () => {
+  const ED = '55555555-5555-5555-5555-5555555555e4', EC = '55555555-5555-5555-5555-5555555555e5';
+  const C = '00000000-0000-0000-0000-0000000000e3';   // 拉弦社員，沒排進 P1
+  await as(A, `insert into events (id,semester_id,kinds,title,starts_at,ends_at,calendar_key) values
+      ('${ED}','${S}',array['dress'],'總彩','2026-12-10 13:00+08','2026-12-10 18:00+08','tutti'),
+      ('${EC}','${S}',array['concert'],'公演','2026-12-11 18:00+08','2026-12-11 21:00+08','tutti');
+    insert into event_pieces values ('${ED}','${P1}'),('${EC}','${P1}')`);
+  const exp = async (eid, uid) => (await as(A, `select public.is_expected(e, '${uid}') as ok from events e where e.id='${eid}'`)).rows[0].ok;
+  for (const e of [ED, EC]) {
+    assert.equal(await exp(e, B), true);    // 排在 P1
+    assert.equal(await exp(e, C), false);   // 沒排進 P1
+  }
+});
+
+test('借教室：社員可以借；同一間同時段不能重複；有社團行程的時段不能借；只能取消自己的（幹部都可以）；槍手不能借', async () => {
+  const C = '00000000-0000-0000-0000-0000000000e3';
+  const ok = await as(B, `insert into room_bookings (room,starts_at,ends_at,purpose) values ('710','2026-12-23 12:00+08','2026-12-23 13:00+08','練二胡')`);
+  assert.ok(!ok.error, ok.error);
+  const dup = await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('710','2026-12-23 12:30+08','2026-12-23 14:00+08')`);
+  assert.match(String(dup.error || ''), /已經被/);                                 // 同一間重疊
+  assert.ok(!(await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('711','2026-12-23 12:30+08','2026-12-23 14:00+08')`)).error);   // 別間可以
+  assert.ok(!(await as(C, `insert into room_bookings (room,starts_at,ends_at) values ('710','2026-12-23 13:00+08','2026-12-23 14:00+08')`)).error);   // 接在後面可以
+  await as(A, `insert into events (semester_id,kinds,title,starts_at,ends_at,calendar_key,location) values
+    ('${S}',array['sectional'],'彈撥分部課','2026-12-24 19:00+08','2026-12-24 21:00+08','tutti','綜院 118')`);
+  const ev = await as(B, `insert into room_bookings (room,starts_at,ends_at) values ('118','2026-12-24 20:00+08','2026-12-24 22:00+08')`);
+  assert.match(String(ev.error || ''), /社團行程/);                               // 有行程的時段
+  assert.ok((await as(B, `insert into room_bookings (room,starts_at,ends_at) values ('118','2020-01-01 10:00+08','2020-01-01 11:00+08')`)).error);   // 過去的時段
+  assert.ok((await as(R, `insert into room_bookings (room,starts_at,ends_at) values ('118','2026-12-25 10:00+08','2026-12-25 11:00+08')`)).error);   // 槍手不能借
+  const mine = (await as(B, `select id from room_bookings where user_id='${B}'`)).rows[0].id;
+  await as(C, `delete from room_bookings where id='${mine}'`);
+  assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 1);   // 別人刪不掉
+  await as(A, `delete from room_bookings where id='${mine}'`);
+  assert.equal((await as(A, `select count(*)::int n from room_bookings where id='${mine}'`)).rows[0].n, 0);   // 幹部可以
+});
