@@ -1,5 +1,5 @@
 // 每天晚上 20:00（台北）由排程呼叫：提醒明天的行程與幹部任務；
-// 三天後和明天要算出席、還沒回覆的人，到他那組的頻道 @ 他，附「確定會去」「請假」按鈕
+// 三天後：到還有人沒回覆的那幾組頻道問一次（不 @ 人）；明天：還沒回覆的人到他那組的頻道 @ 他。都附「確定會去」「請假」按鈕
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
 import { admin, cors, discord, json, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
 
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   const WK = "日一二三四五六";
   const md = (iso: string) => { const t = new Date(new Date(iso).getTime() + 8 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WK[t.getUTCDay()]}）`; };
   let nagged = 0;
-  async function nag(e: any, when: string) {
+  async function nag(e: any, when: string, mention: boolean) {
     const { data: rows } = await db.rpc("unanswered", { eid: e.id });
     if (!rows?.length) return;
     const { data: ids } = await db.rpc("discord_ids", { uids: rows.map((r: any) => r.user_id) });
@@ -57,17 +57,19 @@ Deno.serve(async (req) => {
     }
     const buttons: [string, string][] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
     for (const [sec, list] of bySec) {
-      const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
+      const users = mention ? list.map((r) => did.get(r.user_id)).filter(Boolean) as string[] : [];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
-      const text = `**${when} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
-      if (await discord(hooks.sections?.[sec] ?? hooks.announce, text, { users: users.slice(0, 100) }, buttons)) nagged += list.length;
+      const text = mention
+        ? `**${when} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`
+        : `**${when} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？\n還沒回覆的人請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
+      if (await discord(hooks.sections?.[sec] ?? hooks.announce, text, { users }, buttons)) nagged += list.length;
     }
   }
-  for (const e of pub.filter((x) => x.counts_attendance)) await nag(e, `明天 ${md(e.starts_at)}`);
-  // 三天後的行程：先問一次
+  for (const e of pub.filter((x) => x.counts_attendance)) await nag(e, `明天 ${md(e.starts_at)}`, true);
+  // 三天後的行程：先問一次，不 @ 人
   const [f3, t3] = range(twDay(3));
   const { data: ev3 } = await db.from("events").select("*").gte("starts_at", f3).lte("starts_at", t3).eq("counts_attendance", true).order("starts_at");
-  for (const e of (ev3 ?? []).filter((x) => !officerOnly(x))) await nag(e, md(e.starts_at));
+  for (const e of (ev3 ?? []).filter((x) => !officerOnly(x))) await nag(e, md(e.starts_at), false);
   if (nagged) sent.push(`unanswered:${nagged}`);
 
   const { data: tasks } = await db.from("tasks").select("title, due").eq("due", day).neq("status", "done");
