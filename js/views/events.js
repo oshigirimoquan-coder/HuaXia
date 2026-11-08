@@ -136,21 +136,22 @@ export async function leaveDialog(ev, cur) {
     submit: '送出',
     switchBy: 'type',
     fields: [
-      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假、公假不列入出席率；病假要附證明，公假和事假要先私訊團長；事假依社團規定計算' },
+      { name: 'type', label: '類型', type: 'select', value: cur?.type || 'leave', options: Object.entries(LEAVE_LABEL), hint: '病假、公假不列入出席率；事假依社團規定計算' },
       { name: 'at', label: '幾點到／幾點走', type: 'time', value: m?.[1] || '', only: ['late', 'early'], hint: '晚到填預計幾點到，早退填預計幾點走' },
       { name: 'proof', label: '病假證明（診斷證明、藥袋、掛號單的照片）', type: 'photos', full: true, only: ['sick'], value: oldProofs.map((path, i) => ({ path, url: signed[i]?.signedUrl || '' })) },
       { name: 'proof_dm', type: 'toggle', text: '不方便上傳，已私訊團長提供證明', value: cur?.type === 'sick' && cur?.proof_dm, only: ['sick'], full: true },
-      { type: 'note', text: '公假（學校活動、比賽、系上公務等）請先私訊團長說明，再勾選下面這格。', only: ['official'] },
+      { type: 'note', text: '公假（學校活動、比賽、系上公務等）：私訊團長說明後勾選下面這格，或直接在「事由」寫清楚，兩個擇一即可。', only: ['official'] },
       { name: 'official_dm', type: 'toggle', text: '我已私訊團長說明公假', value: cur?.type === 'official' && cur?.proof_dm, only: ['official'], full: true },
-      { type: 'note', text: '事假請先私訊團長說明，再勾選下面這格。', only: ['leave'] },
+      { type: 'note', text: '事假：私訊團長說明後勾選下面這格，或直接在「事由」寫清楚，兩個擇一即可。', only: ['leave'] },
       { name: 'leave_dm', type: 'toggle', text: '我已私訊團長說明事假', value: cur?.type === 'leave' && cur?.proof_dm, only: ['leave'], full: true },
-      { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), required: true, rows: 3, full: true, placeholder: '例：期中考、家教卡到、發燒' },
+      { name: 'reason', label: '事由', type: 'textarea', value: (cur?.reason || '').replace(TIME_TAG, ''), rows: 3, full: true, placeholder: '例：期中考、家教卡到、發燒' },
     ],
     validate: (x) => {
       if ((x.type === 'late' || x.type === 'early') && !x.at) return x.type === 'late' ? '請填預計幾點到' : '請填預計幾點走';
       if (x.type === 'sick' && !x.proof_dm && !(x.proof.keep.length + x.proof.files.length)) return '病假要上傳證明照片，或勾選「已私訊團長」';
-      if (x.type === 'official' && !x.official_dm) return '公假請先私訊團長，再勾選「我已私訊團長說明公假」';
-      if (x.type === 'leave' && !x.leave_dm) return '事假請先私訊團長，再勾選「我已私訊團長說明事假」';
+      const dm = x.type === 'official' ? x.official_dm : x.type === 'leave' ? x.leave_dm : null;
+      if (dm !== null) { if (!dm && !x.reason.trim()) return '請勾選「我已私訊團長」，或在事由寫清楚原因（擇一）'; }
+      else if (!x.reason.trim()) return '請填寫事由';
       return null;
     },
   });
