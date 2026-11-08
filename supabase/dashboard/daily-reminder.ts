@@ -159,6 +159,11 @@ Deno.serve(async (req) => {
 
   const { data: d } = await db.from("private_settings").select("value").eq("key", "discord").maybeSingle();
   const hooks = d?.value ?? {};
+  // 測試：網址加 ?test=1 時只發一則測試訊息到幹部頻道，不發其他提醒
+  if (new URL(req.url).searchParams.get("test")) {
+    const ok = await discord(hooks.officers, "**機器人測試**\n按下面的按鈕，會出現一句只有你看得到的回覆（不會記出席）。", {}, [["🧪 按我測試", SITE || "https://discord.com", "test"]]);
+    return json({ ok, test: true, bot: !!Deno.env.get("DISCORD_BOT_TOKEN") });
+  }
   const { data: events } = await db.from("events").select("*, event_pieces(pieces(title))")
     .gte("starts_at", from).lte("starts_at", to).order("starts_at");
 

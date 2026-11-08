@@ -186,9 +186,15 @@ Deno.serve(async (req) => {
   const [action, eventId] = String(it.data?.custom_id ?? "").split(":");
   const SITE = Deno.env.get("SITE_URL") ?? "";
   const did = it.member?.user?.id ?? it.user?.id;
+  const db = admin();
+  // 幹部頻道的測試按鈕：確認接通、也確認認得出是誰
+  if (action === "test" && did) {
+    const uid = await userOf(db, did);
+    const { data: p } = uid ? await db.from("profiles").select("display_name").eq("id", uid).maybeSingle() : { data: null };
+    return reply(p ? `✅ 機器人接通了！你是網站上的「${p.display_name}」。` : "✅ 機器人接通了，但找不到你的網站帳號（你可能沒有用 Discord 登入過網站）。");
+  }
   if (action !== "yes" || !eventId || !did) return reply("這個按鈕已經不能用了");
 
-  const db = admin();
   const { data: ev } = await db.from("events").select("id, title, starts_at").eq("id", eventId).maybeSingle();
   if (!ev) return reply("找不到這個行程，可能已經刪除了");
   if (new Date(ev.starts_at).getTime() < Date.now() - 3 * 3600e3) return reply(`「${ev.title}」已經結束了`);
