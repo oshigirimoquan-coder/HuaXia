@@ -14,22 +14,20 @@ async function verified(req: Request, body: string) {
 }
 const reply = (content: string) => json({ type: 4, data: { content, flags: 64 } });  // 64 = 只有按的人看得到
 
-// Discord 帳號 → 網站帳號（用 Discord 登入過網站的人才找得到）
+// Discord 帳號 → 網站帳號（用 Discord 登入或在「我的」頁面連結過 Discord 的人才找得到）
+// 跟每晚提醒 @ 人用的是同一個查法（discord_ids），從登入紀錄裡的 Discord 身分對回社員
 let users: Map<string, string> | null = null;
 async function userOf(db: ReturnType<typeof admin>, did: string) {
   if (!users) {
     users = new Map();
-    for (let page = 1; page <= 5; page++) {
-      const { data } = await db.auth.admin.listUsers({ page, perPage: 1000 });
-      for (const u of data?.users ?? []) {
-        for (const i of u.identities ?? []) {
-          if (i.provider !== "discord") continue;
-          const d: any = i.identity_data ?? {};
-          for (const id of [d.provider_id, d.sub, d.id, (i as any).provider_id, i.id]) if (id) users.set(String(id), u.id);
-        }
-      }
-      if ((data?.users?.length ?? 0) < 1000) break;
+    const { data: ps } = await db.from("profiles").select("id");
+    const ids = (ps ?? []).map((p: any) => p.id);
+    for (let i = 0; i < ids.length; i += 500) {
+      const { data, error } = await db.rpc("discord_ids", { uids: ids.slice(i, i + 500) });
+      if (error) console.log("discord_ids failed", error.message);
+      for (const r of data ?? []) if (r.discord_id) users.set(String(r.discord_id), r.user_id);
     }
+    console.log("discord accounts known:", users.size);
   }
   return users.get(did);
 }
