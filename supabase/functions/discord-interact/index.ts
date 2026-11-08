@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
   if (action === "test" && did) {
     const uid = await userOf(db, did);
     const { data: p } = uid ? await db.from("profiles").select("display_name").eq("id", uid).maybeSingle() : { data: null };
-    return reply(p ? `✅ 機器人接通了！你是網站上的「${p.display_name}」。` : "✅ 機器人接通了，但找不到你的網站帳號（你可能沒有用 Discord 登入過網站）。");
+    return reply(p ? `✅ 機器人接通了！你是網站上的「${p.display_name}」。` : "✅ 機器人接通了，但找不到你的網站帳號請到網站「我的」頁面按「連結 Discord」。");
   }
   if (action !== "yes" || !eventId || !did) return reply("這個按鈕已經不能用了");
 
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
 
   let uid = await userOf(db, did);
   if (!uid) { users = null; uid = await userOf(db, did); }  // 剛註冊的人：重新讀一次
-  if (!uid) return reply(`找不到你的網站帳號。請先用 Discord 登入網站一次${SITE ? `：${SITE}#/events/${ev.id}/yes` : ""}`);
+  if (!uid) return reply(`機器人還不認得你的 Discord。請到網站「我的」頁面按「連結 Discord」（只要做一次）${SITE ? `：${SITE}#/me` : ""}\n這次可以先到這裡按出席${SITE ? `：${SITE}#/events/${ev.id}/yes` : ""}`);
 
   const { data: open } = await db.rpc("unanswered", { eid: ev.id });
   if ((open ?? []).some((r: any) => r.user_id === uid)) {
