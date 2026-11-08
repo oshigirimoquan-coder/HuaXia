@@ -59,7 +59,7 @@ export async function editEvent(ev = null) {
       { name: 'sections', label: '分部課組別（可複選）', type: 'checks', full: true, value: sectionsOf(ev), options: SECTIONS.map((x) => [x, x]), hint: '有勾「分部課」時才需要。好幾組一起上就都勾，例如彈撥＋低音' },
       { name: 'class_id', label: '教學班', type: 'select', value: ev?.class_id || '', options: [['', '（不是教學班）'], ...classes.map((c) => [c.id, c.name])], hint: '有勾「教學班」時才需要' },
       { name: 'pieces', label: '這次練習的曲目', type: 'checks', value: cur, options: pieces, full: true, hint: '有勾選曲目時，沒被排到這些曲目的人自動算「無曲」，不計入出席率' },
-      { name: 'note', label: '備註', type: 'textarea', value: ev?.note, full: true },
+      { name: 'note', label: '備註／練習順序', type: 'textarea', value: ev?.note, full: true, placeholder: '例：\n19:30 草蜢\n20:30 春節序曲', hint: '寫在這裡的內容，會一起出現在 Discord 的每週詢問和前一天提醒' },
       { name: 'counts', label: '出席率', type: 'toggle', text: '這次計入出席率', value: ev ? ev.counts_attendance : true },
       { name: 'notify', label: '通知', type: 'toggle', text: '同步發送通知（DC）', value: !ev },
     ],
