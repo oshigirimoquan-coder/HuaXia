@@ -31,7 +31,8 @@ Deno.serve(async (req) => {
   const WK = "日一二三四五六";
   const md = (iso: string) => { const t = new Date(new Date(iso).getTime() + 8 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WK[t.getUTCDay()]}）`; };
   // 行程的備註（例如「19:30 草蜢／20:30 春節序曲」），每行縮排放在行程下面
-  const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : "";
+  // 備註沒寫，就自動寫開始到結束的時間
+  const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : `\n　${hhmm(e.starts_at)}–${hhmm(e.ends_at)}`;
   // 公告：• 11/10（二）週二絲竹 | 721，下面放備註和回覆狀況
   const line = (e: any) => {
     const r = rates.get(e.id);
