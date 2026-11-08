@@ -146,16 +146,16 @@ Deno.serve(async (req) => {
   const md = (iso: string) => { const t = new Date(new Date(iso).getTime() + 8 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WK[t.getUTCDay()]}）`; };
   // 行程的備註（例如「19:30 草蜢／20:30 春節序曲」），每行縮排放在行程下面
   const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : "";
-  // 公告：• 11/10（二） 19:30 週二絲竹，下面放備註和回覆狀況
+  // 公告：• 11/10（二）週二絲竹 | 721，下面放備註和回覆狀況
   const line = (e: any) => {
     const r = rates.get(e.id);
     const reply = r && r.expected ? `\n　應到 ${r.expected} 人：已回覆出席 ${r.said_yes}、請假 ${r.said_off}、晚到早退 ${r.said_late}、還沒回覆 ${r.no_reply}` : "";
-    return `• ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}${noteLines(e)}${reply}`;
+    return `• ${md(e.starts_at)}${e.title}${e.location ? ` | ${e.location}` : ""}${noteLines(e)}${reply}`;
   };
   const pub = (events ?? []).filter((e) => !officerOnly(e));
   const off = (events ?? []).filter((e) => officerOnly(e));
   const sent: string[] = [];
-  if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
+  if (pub.length && await discord(hooks.announce, `**明天的行程**\n${pub.map(line).join("\n")}\n不能到的請先請假${SITE ? `：${SITE}` : ""}`)) sent.push("announce");
 
   // 還沒回覆（沒按出席，也沒請假／晚到／早退）的人：依組別發到各組頻道（沒設定就發公告頻道）並 @ 他，附按鈕
   let nagged = 0;
