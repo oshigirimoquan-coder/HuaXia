@@ -66,7 +66,9 @@ route('/', async () => {
   // 只算被點名標記的（「@全體絲竹成員」已拿掉）
   const newTags = (tags.data || []).filter((a) => !read.has(a.id) && (a.mentions || []).includes(me())).slice(0, 3);
   const tagBox = newTags.length ? `<section class="tag-box"><b>有人提到你</b>${newTags.map((a) => `<a href="#/announcements"><span class="k">${catLabel(a)}</span>${esc(a.title)}<span class="muted small">${fmtDate(a.created_at)}</span></a>`).join('')}</section>` : '';
-  return hero + tagBox + (p.admin && pending.data?.length ? `<a class="banner" href="#/members"><b>${pending.data.length} 人等待核准加入</b><span>前往審核 →</span></a>` : '') +
+  // 還沒連結 Discord 的人（用 Email 登入的舊帳號）：提醒連結，之後只能用 Discord 登入
+  const noDiscord = !(state.session?.user?.identities || []).some((i) => i.provider === 'discord');
+  return hero + tagBox + (noDiscord ? `<a class="banner" href="#/me"><b>請連結你的 Discord</b><span>網站之後只能用 Discord 登入，也才能在 Discord 直接按「確定會去」→</span></a>` : '') + (p.admin && pending.data?.length ? `<a class="banner" href="#/members"><b>${pending.data.length} 人等待核准加入</b><span>前往審核 →</span></a>` : '') +
     (p.admin && !state.semester ? `<a class="banner" href="#/settings"><b>還沒有設定目前學期</b><span>先建立學期，才能新增行程 →</span></a>` : '') +
     (p.admin && backupDue(state.settings.last_backup_at, state.semester?.starts_on) ? `<a class="banner" href="#/settings"><b>${state.settings.last_backup_at ? '超過 60 天沒有備份資料' : '這學期還沒備份過資料'}</b><span>到設定頁匯出備份 →</span></a>` : '') +
     (latest ? `<a class="ann-top" href="#/announcements"><span class="k ${latest.type === 'urgent' ? 'urgent' : ''}">${latest.pinned ? '置頂公告' : '最新公告'}</span>

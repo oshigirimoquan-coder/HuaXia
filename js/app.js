@@ -102,37 +102,32 @@ const DISCORD_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 5.
 function authHead(animate) {
   return `<div class="auth-logo ${animate ? 'in' : ''}"><img src="img/logo-320.png" alt="華夏國樂社" width="140" height="140"></div>`;
 }
+// 登入只用 Discord。Email 只留給還沒連結 Discord 的舊帳號登入（不能再用 Email 註冊）
 function authScreen(mode = 'login', animate = true) {
+  const showEmail = mode === 'email';
   $('#app').innerHTML = `<div class="auth"><div class="auth-card">
     ${authHead(animate)}
     <p class="auth-sub">練習・出席・曲目・樂譜</p>
     <div class="auth-box">
       <button class="btn discord" id="discord">${DISCORD_SVG}用 Discord 登入</button>
-      <div class="or"><span>或用 Email ${mode === 'signup' ? '註冊' : '登入'}</span></div>
+      ${showEmail ? `<div class="or"><span>舊帳號用 Email 登入</span></div>
       <form id="auth-form" class="auth-form">
-        ${mode === 'signup' ? '<label>姓名<input name="name" required maxlength="40" autocomplete="name"></label>' : ''}
         <label>Email<input name="email" type="email" required autocomplete="email"></label>
-        <label>密碼<input name="pw" type="password" required minlength="6" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}"></label>
-        <button class="btn pri">${mode === 'signup' ? '註冊' : '登入'}</button>
+        <label>密碼<input name="pw" type="password" required minlength="6" autocomplete="current-password"></label>
+        <button class="btn pri">登入</button>
       </form>
-      <button class="link" id="switch">${mode === 'signup' ? '已經有帳號？登入' : '沒有 Discord？用 Email 註冊'}</button>
+      <p class="small muted">登入後請到「我的」頁面按「連結 Discord」，之後就用 Discord 登入。</p>` : '<button class="link" id="switch">以前用 Email 註冊的舊帳號？</button>'}
     </div>
-    <p class="small muted">外校槍手、指導老師可以用 Email 註冊。註冊後需要管理員核准。</p>
+    <p class="small muted">第一次使用請直接按「用 Discord 登入」，註冊後需要管理員核准。</p>
   </div></div>`;
   $('#discord').onclick = () => sb.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo: location.origin + location.pathname } }).then((r) => r.error && toast(errText(r.error), 'bad'));
-  $('#switch').onclick = () => authScreen(mode === 'signup' ? 'login' : 'signup', false);
-  $('#auth-form').onsubmit = async (e) => {
+  $('#switch')?.addEventListener('click', () => authScreen('email', false));
+  $('#auth-form')?.addEventListener('submit', async (e) => {
     e.preventDefault(); const f = new FormData(e.target); const b = e.target.querySelector('button'); b.disabled = true;
-    const r = mode === 'signup'
-      ? await sb.auth.signUp({ email: f.get('email'), password: f.get('pw'), options: { data: { full_name: f.get('name') } } })
-      : await sb.auth.signInWithPassword({ email: f.get('email'), password: f.get('pw') });
+    const r = await sb.auth.signInWithPassword({ email: f.get('email'), password: f.get('pw') });
     b.disabled = false;
-    if (r.error) {
-      const m = r.error.message;
-      return toast(/Invalid login/i.test(m) ? 'Email 或密碼錯誤。' : /already/i.test(m) ? '這個 Email 已經註冊過，請直接登入。' : errText(r.error), 'bad');
-    }
-    if (!r.data.session) toast('請到信箱點確認信後再登入。');
-  };
+    if (r.error) return toast(/Invalid login/i.test(r.error.message) ? 'Email 或密碼錯誤。' : errText(r.error), 'bad');
+  });
 }
 
 function waitingScreen() {
