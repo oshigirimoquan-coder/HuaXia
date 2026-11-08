@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
     for (const [sec, list] of bySec) {
       const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
-      const text = `**明天 ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}**（${kindText(e)}）會到嗎？${noteLines(e)}\n還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
+      const text = `**明天 ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}** 會到嗎？${noteLines(e)}\n還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
       if (await discord(hookOf(sec), text, { users: users.slice(0, 100) }, buttons)) nagged += list.length;
     }
   }
@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       }
     }
     for (const [h, list] of byHook) {
-      const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}（${kindText(e)}）${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
+      const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)} ${hhmm(e.starts_at)} ${e.title}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
       const buttons: [string, string][] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)} ${e.title}`, `${SITE}#/events/${e.id}/yes`]) : [];
       if (await discord(h, text, {}, buttons)) weekly++;
     }
