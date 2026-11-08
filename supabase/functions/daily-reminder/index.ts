@@ -9,6 +9,8 @@ Deno.serve(async (req) => {
   if (req.headers.get("x-cron-secret") !== Deno.env.get("CRON_SECRET")) return json({ error: "forbidden" }, 403);
   const db = admin();
   const SITE = Deno.env.get("SITE_URL") ?? "";
+  // 測試模式：body 帶 {"test": "<某個頻道的 webhook 網址>"}，只把一則「下週的練習」範例發到那個頻道，其他都不發
+  const testHook: string = (await req.json().catch(() => ({})))?.test ?? "";
 
   // 台北時間的「明天」（週日另外看下週一到週日）
   const twDay = (n: number) => { const t = new Date(Date.now() + 8 * 3600e3); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
@@ -45,6 +47,16 @@ Deno.serve(async (req) => {
     const reply = r && r.expected ? `\n　應到 ${r.expected} 人：已回覆出席 ${r.said_yes}、請假 ${r.said_off}、晚到早退 ${r.said_late}、還沒回覆 ${r.no_reply}` : "";
     return `• ${md(e.starts_at)}${e.title}${e.location ? ` | ${e.location}` : ""}${noteLines(e)}${reply}`;
   };
+  if (testHook) {
+    if (!/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(testHook)) return json({ error: "test 要填 Discord webhook 網址" }, 400);
+    const [wf] = range(twDay(1)), [, wt] = range(twDay(7));
+    const { data: wk } = await db.from("events").select("*, event_pieces(pieces(title))").gte("starts_at", wf).lte("starts_at", wt).eq("counts_attendance", true).order("starts_at");
+    const list = (wk ?? []).filter((x) => !officerOnly(x)).slice(0, 10);
+    if (!list.length) return json({ ok: true, test: "下週沒有要算出席的行程" });
+    const text = `**【測試】下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${e.title}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」`;
+    const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${e.title}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
+    return json({ ok: await discord(testHook, text, {}, buttons), test: list.length, bot: !!Deno.env.get("DISCORD_BOT_TOKEN") });
+  }
   const pub = (events ?? []).filter((e) => !officerOnly(e));
   const off = (events ?? []).filter((e) => officerOnly(e));
   const sent: string[] = [];
