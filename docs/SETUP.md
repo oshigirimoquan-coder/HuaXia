@@ -43,6 +43,19 @@ Supabase **Edge Functions → Deploy a new function → Via Editor**，建立三
 | `calendar-sync` | `supabase/dashboard/calendar-sync.ts` | 開啟 |
 | `notify` | `supabase/dashboard/notify.ts` | 開啟 |
 | `daily-reminder` | `supabase/dashboard/daily-reminder.ts` | **關閉**（排程呼叫，用 CRON_SECRET 驗證） |
+| `discord-interact`（選用） | `supabase/dashboard/discord-interact.ts` | **關閉**（Discord 呼叫，用簽章驗證） |
+
+> 華夏目前的每日提醒函式名稱是 `daily-reminder-`（多一個「-」），排程 `huaxia-daily-reminder` 已改成呼叫這個名字。
+
+### Discord 機器人按鈕（選用）
+
+讓「✅ 確定會去」在 Discord 裡按一下就記好，不用跳到網站：
+1. Discord Developer Portal → 用來「Discord 登入」的那個應用程式 → **Bot**：Reset Token，複製。
+2. **General Information**：複製 Public Key 和 Application ID。
+3. 邀請機器人進伺服器：`https://discord.com/oauth2/authorize?client_id=<Application ID>&scope=bot&permissions=3072`（檢視頻道＋傳送訊息）。私人頻道要另外把機器人加進去。
+4. Supabase Secrets：`DISCORD_BOT_TOKEN`、`DISCORD_PUBLIC_KEY`。
+5. 部署 `discord-interact`（Verify JWT 關閉），把網址填到 General Information 的 **Interactions Endpoint URL** 並儲存。
+6. 重新部署每日提醒。之後提醒改由機器人發到各 webhook 所在的頻道；沒設定機器人時自動退回 webhook＋網址按鈕。
 
 > 會用指令列的人也可以 `npx supabase functions deploy`，來源在 `supabase/functions/`。修改來源後執行 `node scripts/bundle-functions.mjs` 重新產生單檔版。
 

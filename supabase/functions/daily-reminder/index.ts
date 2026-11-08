@@ -2,7 +2,7 @@
 // 每週日：把下週一到週日要算出席的行程，在還有人沒回覆的那幾組頻道問一次（不 @ 人），一場一個「確定會去」按鈕；
 // 明天：還沒回覆的人到他那組的頻道 @ 他，附「確定會去」「請假」按鈕
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
-import { admin, cors, discord, json, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
+import { admin, Btn, cors, discord, json, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     const all = [...bySec.values()].flat();
     const { data: ids } = await db.rpc("discord_ids", { uids: all.map((r: any) => r.user_id) });
     const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
-    const buttons: [string, string][] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
+    const buttons: Btn[] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
     for (const [sec, list] of bySec) {
       const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     }
     for (const [h, list] of byHook) {
       const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${e.title}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
-      const buttons: [string, string][] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${e.title}`, `${SITE}#/events/${e.id}/yes`]) : [];
+      const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${e.title}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
       if (await discord(h, text, {}, buttons)) weekly++;
     }
   }

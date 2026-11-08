@@ -77,23 +77,50 @@ export async function gcal(path: string, method = "GET", body?: unknown) {
 }
 
 // ---------- Discord ----------
-// buttons：連結按鈕（[文字, 網址]）。Discord 一般 webhook 要加 ?with_components=true 才能放按鈕；送失敗就改成不帶按鈕再送一次
-export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}, buttons: [string, string][] = []) {
+// buttons：[文字, 網址, 互動代碼?]。
+// 有設定 DISCORD_BOT_TOKEN 時改由機器人發文，帶互動代碼的按鈕在 Discord 裡按了就直接處理（discord-interact 函式）；
+// 沒有機器人時用 webhook，按鈕都變成「打開網址」。Webhook 要加 ?with_components=true 才能放按鈕；失敗就改成附網址再送一次
+export type Btn = [string, string, string?];
+const channelOf = new Map<string, string>();
+async function webhookChannel(url: string) {
+  if (!channelOf.has(url)) {
+    const r = await fetch(url).catch(() => null);
+    const id = r?.ok ? (await r.json()).channel_id : "";
+    channelOf.set(url, id || "");
+  }
+  return channelOf.get(url)!;
+}
+const rows = (buttons: Btn[], interactive: boolean) => Array.from({ length: Math.ceil(Math.min(buttons.length, 25) / 5) }, (_, i) => ({
+  type: 1,
+  components: buttons.slice(i * 5, i * 5 + 5).map(([label, u, id]) => interactive && id
+    ? { type: 2, style: 3, label: label.slice(0, 80), custom_id: id }
+    : { type: 2, style: 5, label: label.slice(0, 80), url: u }),
+}));
+export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}, buttons: Btn[] = []) {
   if (!url) return false;
-  const send = (withButtons: boolean) => fetch(withButtons ? `${url}${url.includes("?") ? "&" : "?"}with_components=true` : url, {
+  const base = { content: content.slice(0, 1990), allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] } };
+  const bot = Deno.env.get("DISCORD_BOT_TOKEN");
+  if (bot && buttons.some((b) => b[2])) {
+    const ch = await webhookChannel(url);
+    if (ch) {
+      const r = await fetch(`https://discord.com/api/v10/channels/${ch}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bot ${bot}` },
+        body: JSON.stringify({ ...base, components: rows(buttons, true) }),
+      });
+      if (r.ok) return true;
+      console.log("bot send failed", ch, r.status, await r.text());
+    }
+  }
+  const send = (withButtons: boolean, text = base.content) => fetch(withButtons ? `${url}${url.includes("?") ? "&" : "?"}with_components=true` : url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      content: content.slice(0, 1990),
-      allowed_mentions: { parse: [], users: mention.users ?? [], roles: mention.roles ?? [] },
-      // 一排最多 5 個按鈕、最多 5 排
-      ...(withButtons ? { components: Array.from({ length: Math.ceil(Math.min(buttons.length, 25) / 5) }, (_, i) => ({ type: 1, components: buttons.slice(i * 5, i * 5 + 5).map(([label, u]) => ({ type: 2, style: 5, label: label.slice(0, 80), url: u })) })) } : {}),
-    }),
+    body: JSON.stringify({ ...base, content: text, ...(withButtons ? { components: rows(buttons, false) } : {}) }),
   });
   if (buttons.length) {
     const res = await send(true);
     if (res.ok) return true;
-    content += "\n" + buttons.map(([l, u]) => `${l}：${u}`).join("\n");
+    return (await send(false, (content + "\n" + buttons.map(([l, u]) => `${l}：${u}`).join("\n")).slice(0, 1990))).ok;
   }
   return (await send(false)).ok;
 }
