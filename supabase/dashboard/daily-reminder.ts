@@ -145,8 +145,9 @@ Deno.serve(async (req) => {
   const WK = "日一二三四五六";
   const md = (iso: string) => { const t = new Date(new Date(iso).getTime() + 8 * 3600e3); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WK[t.getUTCDay()]}）`; };
   // 行程的備註（例如「19:30 草蜢／20:30 春節序曲」），每行縮排放在行程下面
-  // 備註沒寫，就自動寫開始到結束的時間
-  const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : `\n　${hhmm(e.starts_at)}–${hhmm(e.ends_at)}`;
+  // 備註沒寫，就自動寫開始到結束的時間，和勾選的曲目
+  const piecesOf = (e: any) => (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean) as string[];
+  const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : `\n　${hhmm(e.starts_at)}–${hhmm(e.ends_at)}${piecesOf(e).length ? `\n　曲目：${piecesOf(e).join("、")}` : ""}`;
   // 公告：• 11/10（二）週二絲竹 | 721，下面放備註和回覆狀況
   const line = (e: any) => {
     const r = rates.get(e.id);
@@ -195,7 +196,7 @@ Deno.serve(async (req) => {
   let weekly = 0;
   if (new Date(Date.now() + 8 * 3600e3).getUTCDay() === 0) {
     const [wf] = range(twDay(1)), [, wt] = range(twDay(7));
-    const { data: wk } = await db.from("events").select("*").gte("starts_at", wf).lte("starts_at", wt).eq("counts_attendance", true).order("starts_at");
+    const { data: wk } = await db.from("events").select("*, event_pieces(pieces(title))").gte("starts_at", wf).lte("starts_at", wt).eq("counts_attendance", true).order("starts_at");
     const byHook = new Map<string, any[]>();
     for (const e of (wk ?? []).filter((x) => !officerOnly(x))) {
       for (const sec of (await unansweredBySec(e)).keys()) {
