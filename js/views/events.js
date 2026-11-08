@@ -266,11 +266,13 @@ route('/events', async () => {
 route('/events/:id/yes', async ({ id }) => {
   const back = () => location.replace(`#/events/${id}`);
   const [{ data: ev }, { data: row }] = await Promise.all([
-    sb.from('events').select('id, starts_at').eq('id', id).maybeSingle(),
+    sb.from('events').select('id, starts_at, counts_attendance').eq('id', id).maybeSingle(),
     sb.from('leave_requests').select('*').eq('event_id', id).eq('user_id', me()).maybeSingle(),
   ]);
   if (!ev) { setTimeout(back); return ''; }
+  const meRow = ev?.counts_attendance ? ((await sb.rpc('event_roster', { eid: id })).data || []).find((r) => r.user_id === me()) : null;
   if (daysFromToday(ev.starts_at) < 0) toast('這場已經結束了');
+  else if (ev.counts_attendance && !meRow?.expected) toast('這次沒有排到你的曲目，不用到');
   else if (isAttend(row)) toast('你已經確認會去了', 'ok');
   else if (row) toast(`你已經${LEAVE_LABEL[row.type] || '請假'}了，要改的話在這頁修改`);
   else await run(() => sb.from('leave_requests').upsert({ event_id: id, user_id: me(), type: 'attend', reason: '' }), '已確認會去，到時見！');
@@ -297,7 +299,8 @@ route('/events/:id', async ({ id }) => {
   const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
     ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official', 'leave'])).data || []).map((x) => [x.user_id, x]) : []);
   const mine = roster.find((r) => r.user_id === me());
-  const expectedMe = mine?.expected;
+  // 名單裡沒有自己＝這次不用到（沒排到曲目、不是這組）；不計出席的行程照舊可以回覆
+  const expectedMe = mine ? mine.expected : ev.counts_attendance ? false : undefined;
 
   setTimeout(() => {
     $('#edit-ev')?.addEventListener('click', () => editEvent(ev));
@@ -319,7 +322,7 @@ route('/events/:id', async ({ id }) => {
 
   const pieces = (eps || []).map((x) => x.pieces).filter(Boolean);
   const exp = roster.filter((r) => r.expected);
-  const leaves = roster.filter((r) => r.leave_type && !isAttend(r));
+  const leaves = roster.filter((r) => r.expected && r.leave_type && !isAttend(r));
   const yes = roster.filter((r) => isAttend(r)).length;
   const counts = Object.fromEntries(Object.keys(ATT_LABEL).map((k) => [k, roster.filter((r) => r.status === k).length]));
   const bySec = new Map();
@@ -327,6 +330,7 @@ route('/events/:id', async ({ id }) => {
 
   const secOrder = (s) => { const i = SECTIONS.indexOf(s); return i < 0 ? 99 : i; };
   const secs = [...bySec].sort((a, b) => secOrder(a[0]) - secOrder(b[0]));
+  for (const [, rows] of secs) rows.sort((a, b) => Number(!!b.expected) - Number(!!a.expected));
   return `<a class="back" href="#/events">← 行程</a>` +
     pageHead(ev.title, `<span class="kind">${kindsLabel(ev)}</span> ${sectionsOf(ev).map(sectionChip).join(' ')} <span class="mono">${fmtRange(ev.starts_at, ev.ends_at)}</span>${ev.location ? ` · ${esc(ev.location)}` : ''}`,
       p.officer ? '<button class="btn" id="edit-ev">編輯</button>' : '') +
@@ -357,7 +361,9 @@ route('/events/:id', async ({ id }) => {
       ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick', 'official'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${['sick', 'official', 'leave'].includes(r.leave_type) ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
       ${roster.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';
-        return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${r.expected ? '' : ' <span class="chip">非應到</span>'}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>
+        // 沒排到這次曲目（或不是這次的組）的人：不用點名，直接顯示「無曲」；之前被點過的才留選單可以改回來
+        if (!r.expected && !st) return `<tr data-st="na"><td>${chipPerson(r.user_id)}</td><td class="sel"><span class="att att-na">${pieces.length ? '無曲' : '不用到'}</span></td></tr>`;
+        return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${r.expected ? '' : ` <span class="chip">${pieces.length ? '無曲' : '非應到'}</span>`}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>
           <td class="sel"><select data-roll="${r.user_id}" aria-label="${esc(nameOf(r.user_id))} 出席狀態"><option value="">未點名</option>${Object.entries(ATT_LABEL).map(([k, l]) => `<option value="${k}" ${st === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`;
       }).join('')).join('')}</tbody></table></div>` : '<p class="muted">沒有應到的人。有勾選曲目時，只有排到這些曲目的人會出現在名單上。</p>'}
     </section>` : '');
