@@ -2,7 +2,7 @@
 // 每週日：把下週一到週日要算出席的行程，在還有人沒回覆的那幾組頻道問一次（不 @ 人），一場一個「確定會去」按鈕；
 // 明天：還沒回覆的人到他那組的頻道 @ 他，附「確定會去」「請假」按鈕
 // 呼叫時需帶 header  x-cron-secret: <CRON_SECRET>
-import { admin, Btn, cors, discord, json, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
+import { admin, Btn, cors, discord, json, KIND, kindsOf, kindText, officerOnly } from "../_shared/common.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -41,11 +41,13 @@ Deno.serve(async (req) => {
   // 備註沒寫，就自動寫開始到結束的時間，和勾選的曲目
   const piecesOf = (e: any) => (e.event_pieces ?? []).map((x: any) => x.pieces?.title).filter(Boolean) as string[];
   const noteLines = (e: any) => (e.note ?? "").trim() ? "\n" + e.note.trim().split(/\r?\n/).filter((l: string) => l.trim()).map((l: string) => `　${l.trim()}`).join("\n") : `\n　${hhmm(e.starts_at)}–${hhmm(e.ends_at)}${piecesOf(e).length ? `\n　曲目：${piecesOf(e).join("、")}` : ""}`;
+  // 訊息裡顯示類型（大團、絲竹、吹管分部課…），曲目寫在標題的人看下面的備註
+  const label = (e: any) => kindsOf(e).map((k) => k === "sectional" ? `${(e.sections?.length ? e.sections : [e.section]).filter(Boolean).join("＋")}分部課` : (KIND[k] ?? "活動")).join("・");
   // 公告：• 11/10（二）週二絲竹 | 721，下面放備註和回覆狀況
   const line = (e: any) => {
     const r = rates.get(e.id);
     const reply = r && r.expected ? `\n　應到 ${r.expected} 人：已回覆出席 ${r.said_yes}、請假 ${r.said_off}、晚到早退 ${r.said_late}、還沒回覆 ${r.no_reply}` : "";
-    return `• ${md(e.starts_at)}${e.title}${e.location ? ` | ${e.location}` : ""}${noteLines(e)}${reply}`;
+    return `• ${md(e.starts_at)}${label(e)}${e.location ? ` | ${e.location}` : ""}${noteLines(e)}${reply}`;
   };
   if (testHook) {
     if (!/^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//.test(testHook)) return json({ error: "test 要填 Discord webhook 網址" }, 400);
@@ -53,8 +55,8 @@ Deno.serve(async (req) => {
     const { data: wk } = await db.from("events").select("*, event_pieces(pieces(title))").gte("starts_at", wf).lte("starts_at", wt).eq("counts_attendance", true).order("starts_at");
     const list = (wk ?? []).filter((x) => !officerOnly(x)).slice(0, 10);
     if (!list.length) return json({ ok: true, test: "下週沒有要算出席的行程" });
-    const text = `**【測試】下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${e.title}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」`;
-    const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${e.title}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
+    const text = `**【測試】下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${label(e)}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」`;
+    const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${label(e)}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
     return json({ ok: await discord(testHook, text, {}, buttons), test: list.length, bot: !!Deno.env.get("DISCORD_BOT_TOKEN") });
   }
   const pub = (events ?? []).filter((e) => !officerOnly(e));
@@ -90,7 +92,7 @@ Deno.serve(async (req) => {
     for (const [sec, list] of bySec) {
       const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
-      const text = `**明天 ${md(e.starts_at)}${e.title}** 會到嗎？${noteLines(e)}\n還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
+      const text = `**明天 ${md(e.starts_at)}${label(e)}** 會到嗎？${noteLines(e)}\n還沒回覆的人：\n${who}\n\n會到請按「確定會去」；不能來、會晚到或早退，請按「請假」並寫事由`;
       if (await discord(hookOf(sec), text, { users: users.slice(0, 100) }, buttons)) nagged += list.length;
     }
   }
@@ -110,8 +112,8 @@ Deno.serve(async (req) => {
       }
     }
     for (const [h, list] of byHook) {
-      const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${e.title}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
-      const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${e.title}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
+      const text = `**下週的練習，會到嗎？**\n${list.map((e) => `• ${md(e.starts_at)}${label(e)}${noteLines(e)}`).join("\n")}\n\n會到的那幾場，按下面對應的「確定會去」；不能來、會晚到或早退，請到網站請假${SITE ? `：${SITE}#/events` : ""}`;
+      const buttons: Btn[] = SITE ? list.map((e) => [`✅ ${md(e.starts_at)}${label(e)}`, `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`]) : [];
       if (await discord(h, text, {}, buttons)) weekly++;
     }
   }
