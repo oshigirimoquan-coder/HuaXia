@@ -93,7 +93,7 @@ async function webhookChannel(url: string) {
 const rows = (buttons: Btn[], interactive: boolean) => Array.from({ length: Math.ceil(Math.min(buttons.length, 25) / 5) }, (_, i) => ({
   type: 1,
   components: buttons.slice(i * 5, i * 5 + 5).map(([label, u, id]) => interactive && id
-    ? { type: 2, style: 3, label: label.slice(0, 80), custom_id: id }
+    ? { type: 2, style: id.startsWith("yes:") ? 3 : 2, label: label.slice(0, 80), custom_id: id }
     : { type: 2, style: 5, label: label.slice(0, 80), url: u }),
 }));
 export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}, buttons: Btn[] = []) {
@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
     const all = [...bySec.values()].flat();
     const { data: ids } = await db.rpc("discord_ids", { uids: all.map((r: any) => r.user_id) });
     const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
-    const buttons: Btn[] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
+    const buttons: Btn[] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`], ["請假／晚到早退", `${SITE}#/events/${e.id}`, `leave:${e.id}`]] : [];
     for (const [sec, list] of bySec) {
       const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");

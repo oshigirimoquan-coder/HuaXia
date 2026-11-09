@@ -93,7 +93,7 @@ async function webhookChannel(url: string) {
 const rows = (buttons: Btn[], interactive: boolean) => Array.from({ length: Math.ceil(Math.min(buttons.length, 25) / 5) }, (_, i) => ({
   type: 1,
   components: buttons.slice(i * 5, i * 5 + 5).map(([label, u, id]) => interactive && id
-    ? { type: 2, style: 3, label: label.slice(0, 80), custom_id: id }
+    ? { type: 2, style: id.startsWith("yes:") ? 3 : 2, label: label.slice(0, 80), custom_id: id }
     : { type: 2, style: 5, label: label.slice(0, 80), url: u }),
 }));
 export async function discord(url: string | undefined, content: string, mention: { users?: string[]; roles?: string[] } = {}, buttons: Btn[] = []) {

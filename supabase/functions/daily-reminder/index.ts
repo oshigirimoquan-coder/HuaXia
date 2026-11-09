@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     const all = [...bySec.values()].flat();
     const { data: ids } = await db.rpc("discord_ids", { uids: all.map((r: any) => r.user_id) });
     const did = new Map((ids ?? []).map((x: any) => [x.user_id, x.discord_id]));
-    const buttons: Btn[] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`], ["請假／晚到早退", `${SITE}#/events/${e.id}`]] : [];
+    const buttons: Btn[] = SITE ? [["✅ 確定會去", `${SITE}#/events/${e.id}/yes`, `yes:${e.id}`], ["請假／晚到早退", `${SITE}#/events/${e.id}`, `leave:${e.id}`]] : [];
     for (const [sec, list] of bySec) {
       const users = list.map((r) => did.get(r.user_id)).filter(Boolean) as string[];
       const who = list.map((r) => (did.get(r.user_id) ? `<@${did.get(r.user_id)}>` : r.display_name)).join(" ");
