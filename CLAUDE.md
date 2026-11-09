@@ -7,3 +7,4 @@
 - 不匯入真實社員資料，除非社長確認（見 `docs/open-questions.md` #9）。
 - 改完直接推上 GitHub，不用先問（Eddy 2026-10-08 指示）。例外：有改資料庫時，先給他要跑的 SQL，確認跑完再推。
 - 金鑰只放在 Supabase Secrets；`config.js` 只能放 publishable key。
+- commit 作者用 Eddy 的帳號：`git config user.name swiming`、`git config user.email swiming929@gmail.com`（2026-11-09 指示，Claude 只放在 Co-Authored-By）。
