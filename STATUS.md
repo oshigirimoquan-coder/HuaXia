@@ -6,7 +6,7 @@
 - 資料庫：Supabase（2026-11 Eddy 說已轉到「政大華夏國樂社」組織）；改資料庫要先在 SQL Editor 執行 `supabase/schema.sql`，再合併網站的修改
 - Supabase 的 Site URL／Redirect URLs、Secret `SITE_URL` 已改成新網址（2026-11-10）
 - 換網址公告已發（2026-11-10）
-- 「用 Discord 登入」改用社團自己的 Discord 應用程式「華夏恐ㄎ一ㄤ龍」（2026-11-10）
+- 「用 Discord 登入」改用社團自己的 Discord 應用程式「華夏恐ㄎ一ㄤ龍」（2026-11-10）；DC 機器人（每晚提醒、✅／請假按鈕）本來就是同一個應用程式
 - 示範模式（`?demo`）已移除
 - 每晚提醒的 Edge Function 實際名稱是 `daily-reminder-`（多一個 `-`），排程（`supabase/cron.sql`）呼叫這個名字
 
