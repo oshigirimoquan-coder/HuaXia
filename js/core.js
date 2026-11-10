@@ -1,5 +1,5 @@
 // 核心：連線、登入狀態、共用介面元件、路由
-import { perms, twParts, twWeekday, ROLE_LABEL, linkErrorFromUrl } from './logic.js';
+import { perms, twParts, twWeekday, ROLE_LABEL, linkErrorFromUrl, authErrorFromUrl } from './logic.js';
 
 const cfg = window.HUAXIA_CONFIG || {};
 // 示範模式已從正式網站移除（2026-10-24）；只有另外準備的離線測試版會設定 HUAXIA_DEMO 並附上假資料
@@ -9,6 +9,7 @@ export let sb = null;
 
 // 連結 Discord 失敗回來時要顯示的說明；先讀走並清掉網址，Supabase 才會照常讀出原本的登入
 export let linkError = null;
+export let authError = null;  // Discord 登入失敗的原因，顯示在登入頁
 
 // 示範模式的身分切換
 export const DEMO_ROLES = {
@@ -25,6 +26,7 @@ export async function connect() {
   if (!cfg.url || !cfg.anonKey) return false;
   linkError = linkErrorFromUrl(location.search, location.hash);
   if (linkError) history.replaceState(null, '', location.pathname + '#/me');
+  else if ((authError = authErrorFromUrl(location.search, location.hash))) { console.log('auth error', location.search, location.hash); history.replaceState(null, '', location.pathname); }
   const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   sb = createClient(cfg.url, cfg.anonKey);
   return true;

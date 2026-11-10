@@ -1,4 +1,4 @@
-import { sb, state, connect, loadMe, loadShared, render, esc, $, $$, toast, errText, me, DEMO, DEMO_ROLES, demoAs, avatar, nameOf, linkError, mySecs } from './core.js';
+import { sb, state, connect, loadMe, loadShared, render, esc, $, $$, toast, errText, me, DEMO, DEMO_ROLES, demoAs, avatar, nameOf, linkError, authError, mySecs } from './core.js';
 import './views/home.js';
 import './views/events.js';
 import './views/attendance.js';
@@ -109,6 +109,7 @@ function authScreen(mode = 'login', animate = true) {
     ${authHead(animate)}
     <p class="auth-sub">練習・出席・曲目・樂譜</p>
     <div class="auth-box">
+      ${authError ? `<p class="auth-err" role="alert">${esc(authError)}</p>` : ''}
       <button class="btn discord" id="discord">${DISCORD_SVG}使用 Discord 登入</button>
       ${email ? `<div class="or"><span>${signup ? '用 Email 註冊' : '用 Email 登入'}（限指導老師、校外槍手）</span></div>
       <form id="auth-form" class="auth-form">

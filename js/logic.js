@@ -334,6 +334,20 @@ export function matchPart(fileName, parts, pieceTitle = '') {
 
 // 按「連結 Discord」回來時，Supabase 把失敗原因放在網址（?error_code=… 與 #error_code=…）；認得的回傳要顯示的說明
 export const LINK_DISCORD_TAKEN = '這個 Discord 已經綁在另一個帳號上，請管理員先刪掉那個帳號。';
+// 從 Discord 登入回來時網址帶的錯誤（例如 ?error=...&error_description=...），翻成看得懂的話
+export function authErrorFromUrl(search, hash) {
+  const q = new URLSearchParams(search), h = new URLSearchParams(hash.replace(/^#/, ''));
+  const desc = q.get('error_description') || h.get('error_description') || '';
+  const err = q.get('error') || h.get('error') || q.get('error_code') || h.get('error_code') || '';
+  if (!err && !desc) return null;
+  if (/identity_already_exists/.test(err)) return null;  // 連結 Discord 的錯誤另外處理
+  const d = desc.replace(/\+/g, ' ');
+  if (/signups? not allowed|signup.*disabled/i.test(d)) return '目前網站關閉了新帳號註冊，請聯絡管理員（Supabase 的 Allow new users to sign up 要打開）。';
+  if (/email.*external provider|unverified|email.*not.*verified/i.test(d)) return '你的 Discord 帳號還沒有驗證 Email。請到 Discord「使用者設定 → 我的帳號」驗證 Email 後再登入。';
+  if (/access_denied/i.test(err) && !d) return '你在 Discord 按了取消，沒有完成授權。';
+  if (/flow state|code verifier|expired/i.test(d)) return '登入過程中斷了。請用 Safari 或 Chrome 打開網站（不要從 Discord 或 LINE 點連結），再按一次「使用 Discord 登入」。';
+  return `登入失敗：${d || err}`;
+}
 export function linkErrorFromUrl(search, hash) {
   const code = new URLSearchParams(search).get('error_code') || new URLSearchParams(hash.replace(/^#/, '')).get('error_code');
   return code === 'identity_already_exists' ? LINK_DISCORD_TAKEN : null;

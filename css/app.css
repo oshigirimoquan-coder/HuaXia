@@ -658,3 +658,5 @@ input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-dat
 .room-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 10px; border-radius: 10px; background: var(--sunk); }
 .room-list li .btn { margin-left: auto; }
 .room-ev { opacity: .85; }
+
+.auth-err { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); font-size: 14px; line-height: 1.5; text-align: left; }
