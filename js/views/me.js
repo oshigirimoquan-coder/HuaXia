@@ -40,8 +40,15 @@ route('/me', async () => {
   const canUseDc = dcAvatar && dcAvatar !== u?.avatar_url;
   setTimeout(() => {
     $$('[data-theme-pick]').forEach((b) => (b.onclick = () => { setTheme(b.dataset.themePick); $$('[data-theme-pick]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }));
-    $('#link-discord')?.addEventListener('click', async () => {
-      const r = await sb.auth.linkIdentity({ provider: 'discord', options: { redirectTo: location.origin + location.pathname + '#/me' } });
+    // 按了先給反應；拿到 Discord 網址後自己跳過去（有些瀏覽器不會自動跳），出錯也一定顯示原因
+    $('#link-discord')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = '正在前往 Discord…';
+      let r;
+      try { r = await sb.auth.linkIdentity({ provider: 'discord', options: { redirectTo: location.origin + location.pathname + '#/me', skipBrowserRedirect: true } }); }
+      catch (err) { r = { error: err }; }
+      if (r?.data?.url) { location.assign(r.data.url); return; }
+      btn.disabled = false; btn.textContent = '連結 Discord';
+      if (!r?.error) r = { error: new Error('沒有拿到 Discord 的連結網址，請重新整理後再試一次') };
       if (r?.error) toast(/manual linking/i.test(r.error.message) ? '管理員還沒開啟「帳號連結」功能（Supabase 的 Allow manual linking）。' : /already/i.test(r.error.message) ? LINK_DISCORD_TAKEN : '連結失敗：' + r.error.message, 'bad');
     });
     $('#me-form')?.addEventListener('submit', async (e) => {
