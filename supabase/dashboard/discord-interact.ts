@@ -143,15 +143,19 @@ export const twTime = (iso: string) =>
 // Discord 機器人的按鈕：在 Discord 按「✅ 確定會去」就直接幫他記出席，回一句只有他看得到的訊息
 // Discord 開發者後台的 Interactions Endpoint URL 填這個函式的網址；Verify JWT 要關掉（改用 Discord 簽章驗證）
 // Secrets：DISCORD_PUBLIC_KEY（應用程式的 Public Key）
+// 換應用程式時可以填「新的,舊的」兩個（逗號隔開）：舊機器人發過的訊息，按鈕會送到舊應用程式，這樣也還能用
 
 const hex = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
-let key: CryptoKey | null = null;
+let keys: CryptoKey[] | null = null;
 async function verified(req: Request, body: string) {
   const sig = req.headers.get("x-signature-ed25519"), ts = req.headers.get("x-signature-timestamp");
   const pub = Deno.env.get("DISCORD_PUBLIC_KEY");
   if (!sig || !ts || !pub) return false;
-  key ??= await crypto.subtle.importKey("raw", hex(pub), { name: "Ed25519" }, false, ["verify"]);
-  return crypto.subtle.verify("Ed25519", key, hex(sig), new TextEncoder().encode(ts + body));
+  keys ??= await Promise.all(pub.split(",").map((k) => k.trim()).filter(Boolean)
+    .map((k) => crypto.subtle.importKey("raw", hex(k), { name: "Ed25519" }, false, ["verify"])));
+  const data = new TextEncoder().encode(ts + body);
+  for (const key of keys) if (await crypto.subtle.verify("Ed25519", key, hex(sig), data)) return true;
+  return false;
 }
 const reply = (content: string) => json({ type: 4, data: { content, flags: 64 } });  // 64 = 只有按的人看得到
 

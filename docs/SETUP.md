@@ -57,6 +57,8 @@ Supabase **Edge Functions → Deploy a new function → Via Editor**，建立三
 5. 部署 `discord-interact`（Verify JWT 關閉），把網址填到 General Information 的 **Interactions Endpoint URL** 並儲存。
 6. 重新部署每日提醒。之後提醒改由機器人發到各 webhook 所在的頻道；沒設定機器人時自動退回 webhook＋網址按鈕。
 
+> 換成另一個應用程式時：`DISCORD_PUBLIC_KEY` 先填「新的,舊的」（逗號隔開），舊機器人發過的訊息按鈕才不會失效；過幾天、舊訊息上的行程都結束後，再改成只填新的。
+
 > 會用指令列的人也可以 `npx supabase functions deploy`，來源在 `supabase/functions/`。修改來源後執行 `node scripts/bundle-functions.mjs` 重新產生單檔版。
 
 ## 5. 每日提醒排程
