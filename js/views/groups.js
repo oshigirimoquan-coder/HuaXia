@@ -9,7 +9,7 @@ const TEACH = '教學班';
 const pct = (r) => r == null ? '<span class="muted">—</span>' : `<span class="rate rate-${rateLevel(r)} mono">${Math.round(r)}%</span>`;
 
 // 點得進哪些組：幹部全部；其他人只有自己所屬的組（其他組的分頁看得到但不能點）
-const visibleSecs = () => (state.p.officer ? SECTIONS : SECTIONS.filter((s) => mySecs().includes(s)));
+const visibleSecs = () => (state.p.viewAll ? SECTIONS : SECTIONS.filter((s) => mySecs().includes(s)));
 
 function pickTab() {
   const saved = sessionStorage.getItem('grp');
@@ -41,11 +41,11 @@ async function sectionView(sec) {
   const rated = secStats.filter((s) => s.current_rate != null);
   // 組內平均：資料庫只給自己所在的組（幹部全部）；舊版資料庫沒有這個函式時，幹部改用個別出席率自己算
   const row = (secAvg.data || []).find((r) => r.section === sec);
-  const avg = row ? (row.avg_rate == null ? null : Number(row.avg_rate)) : (p.officer && rated.length ? rated.reduce((a, b) => a + Number(b.current_rate), 0) / rated.length : null);
-  const showAvg = !!row || p.officer;
+  const avg = row ? (row.avg_rate == null ? null : Number(row.avg_rate)) : (p.viewAll && rated.length ? rated.reduce((a, b) => a + Number(b.current_rate), 0) / rated.length : null);
+  const showAvg = !!row || p.viewAll;
   const statOf = new Map(secStats.map((s) => [s.user_id, s]));
   // 出席率：幹部看全部、組長看自己組；一般社員只看得到自己的（資料庫本來就只給這些）
-  const canSeeAll = p.officer || (p.leader && mySecs().includes(sec));
+  const canSeeAll = p.viewAll || (p.leader && mySecs().includes(sec));
 
   return `<section class="grp-hero sec-${esc(sec)}"><div>
       <h2>${esc(sec)}組</h2>

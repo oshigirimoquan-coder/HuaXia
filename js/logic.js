@@ -45,6 +45,7 @@ export function perms(roles, active = true) {
   return {
     admin, officer, insider,
     staff: officer || r.has('teacher'),
+    viewAll: officer || r.has('teacher'),  // 看得到全團出席、請假、點名、槍手名單（指導老師只能看、不能改）
     leader: r.has('leader'),
     newbie: r.has('newbie'),
     ringerOnly: r.has('ringer') && !insider,

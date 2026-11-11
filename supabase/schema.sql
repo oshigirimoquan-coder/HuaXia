@@ -567,6 +567,12 @@ create or replace function public.is_staff() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_officer() or public.has_role('teacher')
 $$;
+-- 幹部或指導老師（2026-11 社團決定）：老師看得到全團出席、請假、點名、槍手名單、各組公告，只能看、不能改
+-- 幹部會議、幹部事項、聯絡資料、病假證明、招生報名仍然只有幹部；寫入權限只看 is_officer()（泠靈也只依賴 is_officer()）
+create or replace function public.officer_or_teacher() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_officer() or public.has_role('teacher')
+$$;
 -- 社內成員（不含只有槍手身分的人）
 create or replace function public.is_insider() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -674,7 +680,7 @@ begin
     left join leave_requests l on l.event_id = eid and l.user_id = p.id
     where p.status = 'active'
       and (public.is_expected(e, p.id) or a.user_id is not null or l.user_id is not null)
-      and (public.is_officer() or public.has_role('leader') or p.id = auth.uid());  -- 組長可以幫全團點名
+      and (public.officer_or_teacher() or public.has_role('leader') or p.id = auth.uid());  -- 組長可以幫全團點名；老師可以看
 end $$;
 
 -- 出席率統計（目前／整學期）
@@ -703,7 +709,7 @@ begin
     left join attendance a on a.event_id = ev.eid and a.user_id = p.id
     left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
     where p.status = 'active'
-      and (everyone or public.is_officer() or p.id = auth.uid() or public.leads_user(p.id))
+      and (everyone or public.officer_or_teacher() or p.id = auth.uid() or public.leads_user(p.id))
       and public.is_expected(ev.erow, p.id)
       and coalesce(a.status, '') <> 'na'
   ), w as (
@@ -752,7 +758,7 @@ language sql stable security definer set search_path = public as $$
   from unnest(array['吹管','拉弦','彈撥','打擊','低音']) as g(sec)
   left join (public.attendance_calc(sem, true) c join profiles p on p.id = c.user_id)
     on g.sec = any(case when cardinality(p.sections) > 0 then p.sections else array[p.section] end)
-  where public.is_officer() or (public.is_insider() and g.sec = any(public.my_sections()))
+  where public.officer_or_teacher() or (public.is_insider() and g.sec = any(public.my_sections()))
   group by g.sec
 $$;
 
@@ -778,7 +784,7 @@ returns table (event_id uuid, starts_at timestamptz, title text, kinds text[], m
 language plpgsql stable security definer set search_path = public as $$
 declare rules jsonb; lw numeric; ew numeric; uw numeric; exclude_excused boolean;
 begin
-  if auth.uid() is not null and not public.is_officer() then return; end if;
+  if auth.uid() is not null and not public.officer_or_teacher() then return; end if;
   select value into rules from settings where key = 'attendance_rules';
   lw := coalesce((rules->>'late_weight')::numeric, 1);
   ew := coalesce((rules->>'early_weight')::numeric, 1);
@@ -825,7 +831,7 @@ create or replace function public.attendance_detail(sem uuid, uid uuid)
 returns table (event_id uuid, starts_at timestamptz, kind text, title text, expected boolean, marked boolean, status text, note text, leave_type text, leave_reason text)
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if not (uid = auth.uid() or public.is_officer() or public.leads_user(uid)) then return; end if;
+  if not (uid = auth.uid() or public.officer_or_teacher() or public.leads_user(uid)) then return; end if;
   return query
     select e.id, e.starts_at, e.kind, e.title, public.is_expected(e, uid),
       exists (select 1 from attendance x where x.event_id = e.id),
@@ -1026,7 +1032,7 @@ create policy assign_write on public.part_assignments for all using (public.can_
 create policy seat_read on public.seating_charts for select using (public.is_insider() or public.in_piece(piece_id));
 create policy seat_write on public.seating_charts for all using (public.is_officer() or public.has_role('leader')) with check (public.is_officer() or public.has_role('leader'));
 create policy ringer_officer on public.ringers for all using (public.is_officer()) with check (public.is_officer());
-create policy ringer_self on public.ringers for select using (user_id = auth.uid());
+create policy ringer_self on public.ringers for select using (user_id = auth.uid() or public.officer_or_teacher());
 
 create or replace function public.can_read_score(s public.scores) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -1073,16 +1079,16 @@ create policy ev_write on public.events for all using (public.is_officer()) with
 create policy evp_read on public.event_pieces for select using (public.is_active());
 create policy evp_write on public.event_pieces for all using (public.is_officer()) with check (public.is_officer());
 
--- 請假：本人寫；幹部與組長看得到
+-- 請假：本人寫；幹部、指導老師與組長看得到
 create policy leave_read on public.leave_requests for select using (
-  user_id = auth.uid() or public.is_officer() or public.has_role('leader'));
+  user_id = auth.uid() or public.officer_or_teacher() or public.has_role('leader'));
 create policy leave_own on public.leave_requests for all using (user_id = auth.uid())
   with check (user_id = auth.uid() and public.is_active());
 
 -- 點名：幹部全部；組長點自己組員
 -- 點名：幹部與各組組長都可以幫全團點名
 create policy att_read on public.attendance for select using (
-  user_id = auth.uid() or public.is_officer() or public.has_role('leader'));
+  user_id = auth.uid() or public.officer_or_teacher() or public.has_role('leader'));
 create policy att_write on public.attendance for all using (public.is_officer() or public.has_role('leader'))
   with check (public.is_officer() or public.has_role('leader'));
 
@@ -1091,7 +1097,7 @@ create policy ann_read on public.announcements for select using (
   public.is_officer() or case audience
     when 'all' then public.is_active()
     when 'insiders' then public.is_insider()
-    when 'section' then public.is_insider() and section = any(public.my_sections())
+    when 'section' then public.is_insider() and (section = any(public.my_sections()) or public.has_role('teacher'))  -- 老師看得到每一組
     when 'newbies' then public.has_role('newbie')
     when 'ringers' then public.has_role('ringer')
     when 'sizhu' then public.is_insider()
