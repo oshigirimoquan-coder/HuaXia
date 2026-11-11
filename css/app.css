@@ -317,9 +317,12 @@ tr.inactive { opacity: .5; }
   .att-detail td { padding: 0; border: 0; min-width: 0; }
   .att-detail td:empty { display: none; }
   .att-detail .c-date { grid-column: 1; grid-row: 1; }
-  .att-detail .c-title { grid-column: 2; grid-row: 1; }
-  .att-detail .c-st { grid-column: 1; grid-row: 2; }
-  .att-detail .c-reply { grid-column: 2; grid-row: 2; }
+  .att-detail .c-title { display: contents; }  /* 曲目放日期右邊、類型（絲竹、大團）放日期下面 */
+  .att-detail .c-title > a { grid-column: 2 / -1; grid-row: 1; }
+  .att-detail .c-kind { grid-column: 1; grid-row: 2; }
+  .att-detail .c-st { grid-column: 1; grid-row: 3; }
+  .att-detail .c-reply { grid-column: 2; grid-row: 2 / span 2; }
+  .att-detail tr:not(:has(.c-reply:not(:empty))) .c-st { grid-column: 2; grid-row: 2; }  /* 沒有按鈕（已點名）的場次：狀態放曲目下面，少佔一行 */
   .att-detail .c-why { grid-column: 2; }
 }
 .sec-bars { display: grid; gap: 8px; margin-bottom: 18px; }
