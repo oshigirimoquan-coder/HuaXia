@@ -43,7 +43,7 @@ route('/pieces/:id/seating', async ({ id }) => {
     sb.from('piece_parts').select('*').eq('piece_id', id).order('sort'),
     sb.from('part_assignments').select('*'),
     sb.from('seating_charts').select('*').eq('piece_id', id).maybeSingle(),
-    p.viewAll ? sb.from('ringers').select('id,name') : { data: [] },
+    p.officer ? sb.from('ringers').select('id,name') : { data: [] },
   ]);
   if (!pc.data) return empty('找不到這首曲目', '', '<a class="btn" href="#/pieces">回曲目</a>');
   const pts = parts.data || [];
