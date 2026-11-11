@@ -308,7 +308,18 @@ tr.inactive { opacity: .5; }
 @media (max-width: 700px) { .me-att { grid-template-columns: minmax(0, 1fr); } }  /* 1fr 會被表格撐寬、整頁跑版 */
 .me-att > * { min-width: 0; }
 .att-detail td:nth-child(2) { min-width: 8em; }
-@media (max-width: 700px) { .att-detail .rsvp { flex-direction: column; align-items: flex-start; } }
+/* 手機：每一場排成一張小卡（日期＋狀態／行程／回覆／事由），不用左右滑 */
+@media (max-width: 700px) {
+  .att-detail thead { display: none; }
+  .att-detail, .att-detail tbody { display: block; }
+  .att-detail tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .att-detail tr:last-child { border-bottom: 0; }
+  .att-detail td { padding: 0; border: 0; min-width: 0; }
+  .att-detail td:empty { display: none; }
+  .att-detail .c-date { grid-column: 1; grid-row: 1; }
+  .att-detail .c-st { grid-column: 2; grid-row: 1; text-align: right; }
+  .att-detail .c-title, .att-detail .c-reply, .att-detail .c-why { grid-column: 1 / -1; }
+}
 .sec-bars { display: grid; gap: 8px; margin-bottom: 18px; }
 .sec-bar { display: grid; grid-template-columns: 70px minmax(0, 1fr) 48px; gap: 10px; align-items: center; }
 .bar { height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
