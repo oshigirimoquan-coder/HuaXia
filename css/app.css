@@ -305,7 +305,10 @@ tr.inactive { opacity: .5; }
 .rings { display: grid; gap: 14px; min-width: 200px; }
 .rate { font-weight: 600; } .rate-ok { color: var(--ok); } .rate-warn { color: var(--warn); } .rate-bad { color: var(--bad); }
 .me-att { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
-@media (max-width: 700px) { .me-att { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .me-att { grid-template-columns: minmax(0, 1fr); } }  /* 1fr 會被表格撐寬、整頁跑版 */
+.me-att > * { min-width: 0; }
+.att-detail td:nth-child(2) { min-width: 8em; }
+@media (max-width: 700px) { .att-detail .rsvp { flex-direction: column; align-items: flex-start; } }
 .sec-bars { display: grid; gap: 8px; margin-bottom: 18px; }
 .sec-bar { display: grid; grid-template-columns: 70px minmax(0, 1fr) 48px; gap: 10px; align-items: center; }
 .bar { height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
