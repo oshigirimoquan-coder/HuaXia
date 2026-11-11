@@ -17,6 +17,20 @@ export const KIND_LABEL = {
 export const ATT_LABEL = { present: '出席', late: '晚到', early: '早退', absent: '缺席', excused: '事假', sick: '病假', official: '公假', na: '無曲' };
 // 請假分事假、病假、公假：病假、公假不列入出席率
 export const LEAVE_LABEL = { leave: '事假', sick: '病假', official: '公假', late: '晚到', early: '早退' };
+// 請假事由給人看的寫法：「【17:06 到】家教」→「晚到 17:06・家教」；其他假別 →「事假・原因」
+export function leaveText(type, reason) {
+  const label = LEAVE_LABEL[type] || '';
+  const m = String(reason || '').match(/^【(\d{1,2}:\d{2}) (到|走)】\s*/);
+  const rest = m ? String(reason).slice(m[0].length).trim() : String(reason || '').trim();
+  const head = m ? `${label} ${m[1]}` : label;
+  return rest ? `${head}・${rest}` : head;
+}
+// 已回覆的標籤文字：會出席／已晚到／已早退／已請事假（時間和原因另外顯示在下面）
+export function replyTag(type) {
+  if (type === 'attend') return '會出席';
+  if (type === 'late' || type === 'early') return `已${LEAVE_LABEL[type]}`;
+  return `已請${LEAVE_LABEL[type] || '假'}`;
+}
 // 事先按「出席」確認會到（存在請假表，type = 'attend'）
 export const isAttend = (l) => l?.type === 'attend' || l?.leave_type === 'attend';
 export const ANN_TYPE = { practice: '練習異動', performance: '演出', admin: '行政', class: '教學班', urgent: '緊急', other: '公告' };
