@@ -297,8 +297,8 @@ route('/events/:id', async ({ id }) => {
   const roster = (await sb.rpc('event_roster', { eid: id })).data || [];
   // 這場的事先回覆與出席率（幹部）
   const rateRow = seeRoll && ev.semester_id ? ((await sb.rpc('event_rates', { sem: ev.semester_id })).data || []).find((r) => r.event_id === id) : null;
-  // 病假證明（只有幹部、指導老師、組長讀得到別人的）
-  const proofOf = new Map(seeRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
+  // 病假證明（只有幹部、組長讀得到別人的；指導老師看不到）
+  const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
     ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official', 'leave'])).data || []).map((x) => [x.user_id, x]) : []);
   const mine = roster.find((r) => r.user_id === me());
   // 名單裡沒有自己＝這次不用到（沒排到曲目、不是這組）；不計出席的行程照舊可以回覆

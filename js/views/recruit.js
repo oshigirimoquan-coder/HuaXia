@@ -70,8 +70,7 @@ async function editApp(a) {
 }
 
 route('/recruit', async () => {
-  if (!state.p.viewAll) return empty('只有幹部和指導老師可以看招生名單');
-  const canEdit = state.p.officer;  // 指導老師只能看
+  if (!state.p.officer) return empty('只有幹部可以看招生名單');
   const { data } = await sb.from('applications').select('*').order('created_at', { ascending: false });
   const list = data || [];
   const f = sessionStorage.getItem('rcf') || '';
@@ -80,7 +79,7 @@ route('/recruit', async () => {
   const link = location.origin + location.pathname + '#/join';
   setTimeout(() => {
     $$('[data-rcf]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('rcf', b.dataset.rcf); render(); }));
-    if (canEdit) $$('[data-app]').forEach((tr) => (tr.onclick = () => editApp(list.find((x) => x.id === tr.dataset.app))));
+    $$('[data-app]').forEach((tr) => (tr.onclick = () => editApp(list.find((x) => x.id === tr.dataset.app))));
     $('#copy-link')?.addEventListener('click', async () => {
       try { await navigator.clipboard.writeText(link); toast('已複製報名連結', 'ok'); } catch { $('#join-link').select(); }
     });
@@ -95,13 +94,13 @@ route('/recruit', async () => {
       <div class="inline-form"><input id="join-link" value="${esc(link)}" readonly aria-label="報名連結"><button class="btn" id="copy-link">複製</button></div>
       <p class="small muted">貼到 IG、社博海報的 QR code 或 DC。報名的人不用註冊帳號。${state.p.admin ? '' : '開放或關閉報名由管理員操作。'}</p></section>` +
     `<div class="seg"><button data-rcf="" aria-pressed="${!f}">全部 ${list.length}</button>${Object.entries(ST).map(([k, l]) => `<button data-rcf="${k}" aria-pressed="${f === k}">${l} ${n(k)}</button>`).join('')}</div>` +
-    (shown.length ? `<div class="tbl-wrap"><table class="${canEdit ? 'click' : ''}"><thead><tr><th>報名時間</th><th>姓名</th><th>系級</th><th>聯絡方式</th><th>經驗</th><th>有興趣</th><th>狀態</th></tr></thead><tbody>
+    (shown.length ? `<div class="tbl-wrap"><table class="click"><thead><tr><th>報名時間</th><th>姓名</th><th>系級</th><th>聯絡方式</th><th>經驗</th><th>有興趣</th><th>狀態</th></tr></thead><tbody>
       ${shown.map((a) => `<tr data-app="${a.id}"><td class="mono nowrap small">${fmtDate(a.created_at)} ${fmtTime(a.created_at)}</td>
         <td><b>${esc(a.name)}</b>${a.message ? `<div class="small muted">${esc(a.message)}</div>` : ''}${a.officer_note ? `<div class="small" style="color:var(--gold)">${esc(a.officer_note)}</div>` : ''}</td>
         <td>${esc(a.grade)}</td><td class="small">${esc(a.contact)}</td>
         <td class="small">${EXP[a.experience]}${a.instruments_played ? `<div class="muted">${esc(a.instruments_played)}</div>` : ''}</td>
         <td class="small">${esc(a.interests.join('、'))}${a.want_class ? '<div style="color:var(--accent)">想上教學班</div>' : ''}</td>
         <td><span class="chip ${a.status === 'joined' ? 'ok' : a.status === 'new' ? 'warn' : a.status === 'declined' ? '' : 'acc'}">${ST[a.status]}</span></td></tr>`).join('')}
-    </tbody></table></div><p class="small muted">${canEdit ? '點一列可以改狀態、寫備註。' : ''}報名的人加入後，請他用 Discord 或 Email 註冊網站帳號，再到「成員」核准。</p>`
+    </tbody></table></div><p class="small muted">點一列可以改狀態、寫備註。報名的人加入後，請他用 Discord 或 Email 註冊網站帳號，再到「成員」核准。</p>`
       : empty(list.length ? '這個分類沒有人' : '還沒有人報名', open ? '把報名連結貼出去吧。' : '開放報名後，把連結貼到 IG 或 DC。'));
 });

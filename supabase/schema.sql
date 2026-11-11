@@ -567,9 +567,9 @@ create or replace function public.is_staff() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_officer() or public.has_role('teacher')
 $$;
--- 看得到幹部看得到的所有內容（只能看、不能改）：幹部與指導老師（2026-11 社團決定）
--- 寫入權限仍然只看 is_officer()；泠靈也只依賴 is_officer()，這個函式不影響它
-create or replace function public.can_view_all() returns boolean
+-- 幹部或指導老師（2026-11 社團決定）：老師看得到全團出席、請假、點名、槍手名單、各組公告，只能看、不能改
+-- 幹部會議、幹部事項、聯絡資料、病假證明、招生報名仍然只有幹部；寫入權限只看 is_officer()（泠靈也只依賴 is_officer()）
+create or replace function public.officer_or_teacher() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_officer() or public.has_role('teacher')
 $$;
@@ -616,7 +616,7 @@ $$;
 create or replace function public.can_see_event(e public.events) returns boolean
 language sql stable security definer set search_path = public as $$
   select case
-    when public.can_view_all() then true
+    when public.is_officer() then true
     when e.audience = 'officers' then false
     when public.is_insider() then true
     when e.audience = 'all' and public.is_active() then true
@@ -680,7 +680,7 @@ begin
     left join leave_requests l on l.event_id = eid and l.user_id = p.id
     where p.status = 'active'
       and (public.is_expected(e, p.id) or a.user_id is not null or l.user_id is not null)
-      and (public.can_view_all() or public.has_role('leader') or p.id = auth.uid());  -- 組長可以幫全團點名；老師可以看
+      and (public.officer_or_teacher() or public.has_role('leader') or p.id = auth.uid());  -- 組長可以幫全團點名；老師可以看
 end $$;
 
 -- 出席率統計（目前／整學期）
@@ -709,7 +709,7 @@ begin
     left join attendance a on a.event_id = ev.eid and a.user_id = p.id
     left join leave_requests l on l.event_id = ev.eid and l.user_id = p.id
     where p.status = 'active'
-      and (everyone or public.can_view_all() or p.id = auth.uid() or public.leads_user(p.id))
+      and (everyone or public.officer_or_teacher() or p.id = auth.uid() or public.leads_user(p.id))
       and public.is_expected(ev.erow, p.id)
       and coalesce(a.status, '') <> 'na'
   ), w as (
@@ -758,7 +758,7 @@ language sql stable security definer set search_path = public as $$
   from unnest(array['吹管','拉弦','彈撥','打擊','低音']) as g(sec)
   left join (public.attendance_calc(sem, true) c join profiles p on p.id = c.user_id)
     on g.sec = any(case when cardinality(p.sections) > 0 then p.sections else array[p.section] end)
-  where public.can_view_all() or (public.is_insider() and g.sec = any(public.my_sections()))
+  where public.officer_or_teacher() or (public.is_insider() and g.sec = any(public.my_sections()))
   group by g.sec
 $$;
 
@@ -784,7 +784,7 @@ returns table (event_id uuid, starts_at timestamptz, title text, kinds text[], m
 language plpgsql stable security definer set search_path = public as $$
 declare rules jsonb; lw numeric; ew numeric; uw numeric; exclude_excused boolean;
 begin
-  if auth.uid() is not null and not public.can_view_all() then return; end if;
+  if auth.uid() is not null and not public.officer_or_teacher() then return; end if;
   select value into rules from settings where key = 'attendance_rules';
   lw := coalesce((rules->>'late_weight')::numeric, 1);
   ew := coalesce((rules->>'early_weight')::numeric, 1);
@@ -831,7 +831,7 @@ create or replace function public.attendance_detail(sem uuid, uid uuid)
 returns table (event_id uuid, starts_at timestamptz, kind text, title text, expected boolean, marked boolean, status text, note text, leave_type text, leave_reason text)
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if not (uid = auth.uid() or public.can_view_all() or public.leads_user(uid)) then return; end if;
+  if not (uid = auth.uid() or public.officer_or_teacher() or public.leads_user(uid)) then return; end if;
   return query
     select e.id, e.starts_at, e.kind, e.title, public.is_expected(e, uid),
       exists (select 1 from attendance x where x.event_id = e.id),
@@ -998,7 +998,7 @@ end $$;
 create policy prof_read on public.profiles for select using (id = auth.uid() or public.is_active());
 create policy prof_update on public.profiles for update using (id = auth.uid() or public.is_officer());
 create policy prof_delete on public.profiles for delete using (public.is_admin() and id <> auth.uid());
-create policy priv_read on public.profile_private for select using (user_id = auth.uid() or public.can_view_all());
+create policy priv_read on public.profile_private for select using (user_id = auth.uid() or public.is_officer());
 create policy priv_write on public.profile_private for update using (user_id = auth.uid() or public.is_admin());
 create policy roles_read on public.user_roles for select using (user_id = auth.uid() or public.is_active());
 create policy roles_admin on public.user_roles for all using (public.is_admin()) with check (public.is_admin());
@@ -1032,7 +1032,7 @@ create policy assign_write on public.part_assignments for all using (public.can_
 create policy seat_read on public.seating_charts for select using (public.is_insider() or public.in_piece(piece_id));
 create policy seat_write on public.seating_charts for all using (public.is_officer() or public.has_role('leader')) with check (public.is_officer() or public.has_role('leader'));
 create policy ringer_officer on public.ringers for all using (public.is_officer()) with check (public.is_officer());
-create policy ringer_self on public.ringers for select using (user_id = auth.uid() or public.can_view_all());
+create policy ringer_self on public.ringers for select using (user_id = auth.uid() or public.officer_or_teacher());
 
 create or replace function public.can_read_score(s public.scores) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -1066,7 +1066,7 @@ create policy cstu_write on public.class_students for all using (public.is_offic
 create policy cms_read on public.class_milestones for select using (public.is_insider());
 create policy cms_write on public.class_milestones for all using (public.is_officer() or public.teaches_class(class_id))
   with check (public.is_officer() or public.teaches_class(class_id));
-create policy cprog_read on public.class_progress for select using (user_id = auth.uid() or public.can_view_all()
+create policy cprog_read on public.class_progress for select using (user_id = auth.uid() or public.is_officer()
   or exists (select 1 from class_milestones m where m.id = milestone_id and public.teaches_class(m.class_id)));
 create policy cprog_write on public.class_progress for all using (public.is_officer()
   or exists (select 1 from class_milestones m where m.id = milestone_id and public.teaches_class(m.class_id)))
@@ -1081,23 +1081,23 @@ create policy evp_write on public.event_pieces for all using (public.is_officer(
 
 -- 請假：本人寫；幹部、指導老師與組長看得到
 create policy leave_read on public.leave_requests for select using (
-  user_id = auth.uid() or public.can_view_all() or public.has_role('leader'));
+  user_id = auth.uid() or public.officer_or_teacher() or public.has_role('leader'));
 create policy leave_own on public.leave_requests for all using (user_id = auth.uid())
   with check (user_id = auth.uid() and public.is_active());
 
 -- 點名：幹部全部；組長點自己組員
 -- 點名：幹部與各組組長都可以幫全團點名
 create policy att_read on public.attendance for select using (
-  user_id = auth.uid() or public.can_view_all() or public.has_role('leader'));
+  user_id = auth.uid() or public.officer_or_teacher() or public.has_role('leader'));
 create policy att_write on public.attendance for all using (public.is_officer() or public.has_role('leader'))
   with check (public.is_officer() or public.has_role('leader'));
 
 -- 公告
 create policy ann_read on public.announcements for select using (
-  public.can_view_all() or case audience
+  public.is_officer() or case audience
     when 'all' then public.is_active()
     when 'insiders' then public.is_insider()
-    when 'section' then public.is_insider() and section = any(public.my_sections())
+    when 'section' then public.is_insider() and (section = any(public.my_sections()) or public.has_role('teacher'))  -- 老師看得到每一組
     when 'newbies' then public.has_role('newbie')
     when 'ringers' then public.has_role('ringer')
     when 'sizhu' then public.is_insider()
@@ -1117,7 +1117,7 @@ create policy annr_own on public.announcement_reads for all using (user_id = aut
 
 -- 任務：幹部事項社員看不到
 create policy task_read on public.tasks for select using (
-  public.can_view_all() or auth.uid() = any(assignees) or (audience = 'insiders' and public.is_insider()));
+  public.is_officer() or auth.uid() = any(assignees) or (audience = 'insiders' and public.is_insider()));
 create policy task_insert on public.tasks for insert with check (public.is_officer());
 create policy task_update on public.tasks for update using (public.is_officer() or auth.uid() = any(assignees));
 create policy task_delete on public.tasks for delete using (public.is_officer());
@@ -1133,11 +1133,11 @@ create policy fb_read on public.report_feedback for select using (public.can_see
 create policy fb_insert on public.report_feedback for insert with check (author = auth.uid() and public.can_see_report(report_id));
 create policy fb_delete on public.report_feedback for delete using (author = auth.uid() or public.is_officer());
 
--- 招生：開放報名期間任何人都能送出；幹部處理，指導老師看得到
+-- 招生：開放報名期間任何人都能送出；只有幹部看得到與處理
 create policy app_submit on public.applications for insert to anon, authenticated with check (
   status = 'new' and officer_note = ''
   and coalesce((select (value)::text = 'true' from public.settings where key = 'recruit_open'), false));
-create policy app_officer on public.applications for select using (public.can_view_all());
+create policy app_officer on public.applications for select using (public.is_officer());
 create policy app_officer_upd on public.applications for update using (public.is_officer()) with check (public.is_officer());
 create policy app_officer_del on public.applications for delete using (public.is_officer());
 create policy set_read_recruit on public.settings for select to anon using (key = 'recruit_open');
@@ -1155,13 +1155,13 @@ create policy scores_read on storage.objects for select using (
 create policy scores_write on storage.objects for insert with check (bucket_id = 'scores' and public.is_officer());
 create policy scores_delete on storage.objects for delete using (bucket_id = 'scores' and public.is_officer());
 
--- 病假證明：私人 bucket，本人上傳到自己的資料夾（<user id>/…）；本人、幹部與指導老師看得到；本人或幹部可以刪
+-- 病假證明：私人 bucket，本人上傳到自己的資料夾（<user id>/…）；本人與幹部看得到；本人或幹部可以刪
 insert into storage.buckets (id, name, public) values ('leave-proofs', 'leave-proofs', false) on conflict (id) do nothing;
 drop policy if exists proofs_read on storage.objects;
 drop policy if exists proofs_write on storage.objects;
 drop policy if exists proofs_delete on storage.objects;
 create policy proofs_read on storage.objects for select using (
-  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.can_view_all()));
+  bucket_id = 'leave-proofs' and (split_part(name, '/', 1) = auth.uid()::text or public.is_officer()));
 create policy proofs_write on storage.objects for insert with check (
   bucket_id = 'leave-proofs' and auth.uid() is not null and split_part(name, '/', 1) = auth.uid()::text);
 create policy proofs_delete on storage.objects for delete using (
