@@ -17,7 +17,7 @@ export async function invokeFn(name, body) {
 // 分部課只給自己那組看；幹部在行事曆看得到全部（mine=true 時連幹部也只看自己組，用在首頁）
 export function forMe(e, mine = false) {
   if (!(e.kinds || [e.kind]).includes('sectional') || !sectionsOf(e).length) return true;
-  if (!mine && state.p.officer) return true;
+  if (!mine && state.p.viewAll) return true;
   return sectionsOf(e).some((s) => mySecs().includes(s));
 }
 
@@ -293,11 +293,12 @@ route('/events/:id', async ({ id }) => {
   const confirmed = isAttend(myRow);
   const myLeave = confirmed ? null : myRow;
   const canRoll = p.officer || p.leader;
+  const seeRoll = canRoll || p.viewAll;  // 指導老師看得到點名，但不能點
   const roster = (await sb.rpc('event_roster', { eid: id })).data || [];
   // 這場的事先回覆與出席率（幹部）
-  const rateRow = canRoll && ev.semester_id ? ((await sb.rpc('event_rates', { sem: ev.semester_id })).data || []).find((r) => r.event_id === id) : null;
-  // 病假證明（只有幹部、組長讀得到別人的）
-  const proofOf = new Map(canRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
+  const rateRow = seeRoll && ev.semester_id ? ((await sb.rpc('event_rates', { sem: ev.semester_id })).data || []).find((r) => r.event_id === id) : null;
+  // 病假證明（只有幹部、指導老師、組長讀得到別人的）
+  const proofOf = new Map(seeRoll && roster.some((r) => ['sick', 'official', 'leave'].includes(r.leave_type))
     ? ((await sb.from('leave_requests').select('user_id, proof_paths, proof_dm').eq('event_id', id).in('type', ['sick', 'official', 'leave'])).data || []).map((x) => [x.user_id, x]) : []);
   const mine = roster.find((r) => r.user_id === me());
   // 名單裡沒有自己＝這次不用到（沒排到曲目、不是這組）；不計出席的行程照舊可以回覆
@@ -353,17 +354,17 @@ route('/events/:id', async ({ id }) => {
           <button class="btn ${myLeave ? '' : 'ghost'}" id="leave-btn">${myLeave ? '修改請假' : '請假／晚到／早退'}</button></div>` : ''}
       </section>
     </div>` +
-    (canRoll ? `<section class="card">
+    (seeRoll ? `<section class="card">
       <div class="card-head"><h2>點名 <span class="muted small">應到 ${exp.length} 人${yes ? `・已確認出席 ${yes} 人` : ''}</span></h2>
         <div class="actions"><span class="stat-line">${['present', 'late', 'early', 'excused', 'sick', 'official', 'absent'].map((k) => `${ATT_LABEL[k]} <b class="mono">${counts[k]}</b>`).join('　')}</span>
-        <button class="btn sm" id="all-present">其餘標為出席</button></div></div>
+        ${canRoll ? '<button class="btn sm" id="all-present">其餘標為出席</button>' : ''}</div></div>
       ${rateRow ? `<p class="ev-rate">事先回覆：${replyLine(rateRow)}${rateRow.marked && rateRow.rate != null ? `　<span class="rate rate-${rateLevel(Number(rateRow.rate))}">本場出席率 <b class="mono">${Math.round(rateRow.rate)}%</b></span>` : ''}</p>` : ''}
       <p class="small muted" style="margin-bottom:10px">晚到、早退有事先在系統預告的算 1 次出席，沒預告的算 0.5 次。遲到但沒錯過自己的曲目，可以直接標「出席」。病假要附證明、公假要私訊團長，不符合的可以改標「事假」。</p>
       ${leaves.length ? `<div class="leave-box"><b>請假與預告</b>${leaves.map((r) => `<div>${chipPerson(r.user_id)} <span class="chip ${['leave', 'sick', 'official'].includes(r.leave_type) ? 'bad' : 'warn'}">${LEAVE_LABEL[r.leave_type]}</span> ${esc(r.leave_reason || '')}${['sick', 'official', 'leave'].includes(r.leave_type) ? proofHtml(proofOf.get(r.user_id)) : ''}</div>`).join('')}</div>` : ''}
       ${exp.length ? `<div class="tbl-wrap"><table class="roll"><tbody>${secs.map(([s, rows]) => `<tr class="grp"><th colspan="2">${esc(s)}</th></tr>` + rows.map((r) => {
         const st = r.status || '';
         return `<tr data-st="${st}"><td>${chipPerson(r.user_id)}${isAttend(r) ? ' <span class="chip ok">已確認</span>' : ''}</td>
-          <td class="sel"><select data-roll="${r.user_id}" aria-label="${esc(nameOf(r.user_id))} 出席狀態"><option value="">未點名</option>${Object.entries(ATT_LABEL).map(([k, l]) => `<option value="${k}" ${st === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td></tr>`;
+          <td class="sel">${!canRoll ? (st ? `<span class="att att-${st}">${ATT_LABEL[st]}</span>` : '<span class="muted small">未點名</span>') : `<select data-roll="${r.user_id}" aria-label="${esc(nameOf(r.user_id))} 出席狀態"><option value="">未點名</option>${Object.entries(ATT_LABEL).map(([k, l]) => `<option value="${k}" ${st === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`}</td></tr>`;
       }).join('')).join('')}</tbody></table></div>` : '<p class="muted">沒有應到的人。有勾選曲目時，只有排到這些曲目的人會出現在名單上。</p>'}
     </section>` : '');
 });

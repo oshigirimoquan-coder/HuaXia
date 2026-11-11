@@ -899,3 +899,33 @@ test('借教室：社員可以借；同一間同時段不能重複；有社團�
   await as(B, `delete from room_bookings where series_id='${SER}' and starts_at >= '2027-01-12 18:00+08'`);
   assert.equal((await as(B, `select count(*)::int n from room_bookings where series_id='${SER}'`)).rows[0].n, 1);
 });
+
+test('指導老師：幹部看得到的都看得到，但不能改', async () => {
+  const T = '00000000-0000-0000-0000-0000000000a7';
+  await db.exec(`insert into auth.users values ('${T}','t@x','{"name":"老師"}')`);
+  await as(A, `update profiles set status='active' where id='${T}'; insert into user_roles values ('${T}','teacher');
+    insert into tasks (title,audience) values ('幹部事2','officers');
+    update settings set value='true' where key='recruit_open';`);
+  await as('', `set role anon; insert into applications (name, grade, contact) values ('新生甲','資管一','x')`);
+  // 看得到：幹部會議、所有人的出席與請假、每場出席率、別人的明細與聯絡資料、幹部事項、招生報名、病假證明
+  assert.ok((await as(T, `select kind from events`)).rows.some((r) => r.kind === 'officer'));
+  assert.ok((await as(T, `select user_id from attendance_stats('${S}')`)).rows.some((r) => r.user_id === B));
+  assert.ok((await as(T, `select * from leave_requests where user_id='${B}'`)).rows.length > 0);
+  assert.ok((await as(T, `select * from attendance where user_id='${B}'`)).rows.length > 0);
+  assert.ok((await as(T, `select * from event_rates('${S}')`)).rows.length > 0);
+  assert.ok((await as(T, `select * from attendance_detail('${S}','${B}')`)).rows.length > 0);
+  assert.ok((await as(T, `select * from event_roster('${E(1)}')`)).rows.some((r) => r.user_id === B));
+  assert.equal((await as(T, `select * from profile_private where user_id='${A}'`)).rows.length, 1);
+  assert.ok((await as(T, `select title from tasks`)).rows.some((r) => r.title === '幹部事2'));
+  assert.ok((await as(T, `select name from applications`)).rows.some((r) => r.name === '新生甲'));
+  assert.ok((await as(T, `select * from ringers`)).rows.length > 0);
+  // 不能改：公告、行程、點名、別人的請假、招生處理
+  assert.match((await as(T, `insert into announcements (title) values ('x')`)).error, /row-level security/);
+  assert.match((await as(T, `insert into events (semester_id,kind,title,starts_at,ends_at,calendar_key) values ('${S}','tutti','x',now(),now(),'tutti')`)).error, /row-level security/);
+  assert.match((await as(T, `insert into attendance (event_id,user_id,status) values ('${E(4)}','${B}','present')`)).error, /row-level security/);
+  await as(T, `update leave_requests set reason='改掉' where user_id='${B}'; update applications set officer_note='x'`);
+  assert.equal((await as(A, `select reason from leave_requests where user_id='${B}' and event_id='${E(2)}'`)).rows[0].reason, '考試');
+  assert.equal((await as(A, `select officer_note from applications where name='新生甲'`)).rows[0].officer_note, '');
+  // 社員還是看不到
+  assert.equal((await as(B, `select * from applications`)).rows.length, 0);
+});

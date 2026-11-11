@@ -54,7 +54,7 @@ export function bindTasks(list) {
 
 route('/tasks', async () => {
   const p = state.p;
-  const f = sessionStorage.getItem('tf') || (p.officer ? 'all' : 'mine');
+  const f = sessionStorage.getItem('tf') || (p.viewAll ? 'all' : 'mine');
   const { data } = await sb.from('tasks').select('*').order('due', { ascending: true, nullsFirst: false });
   let list = data || [];
   if (f === 'mine') list = list.filter((t) => (t.assignees || []).includes(me()));
@@ -66,7 +66,7 @@ route('/tasks', async () => {
   });
   const cols = ['todo', 'doing', 'done'];
   return pageHead('任務', p.officer ? '點任務可以編輯；點左邊的圓圈切換狀態。幹部事項社員看不到。' : '點左邊的圓圈切換狀態。',
-    `<div class="seg"><button data-tf="all" aria-pressed="${f === 'all'}">全部</button><button data-tf="mine" aria-pressed="${f === 'mine'}">我的</button>${p.officer ? `<button data-tf="officers" aria-pressed="${f === 'officers'}">幹部事項</button>` : ''}</div>
+    `<div class="seg"><button data-tf="all" aria-pressed="${f === 'all'}">全部</button><button data-tf="mine" aria-pressed="${f === 'mine'}">我的</button>${p.viewAll ? `<button data-tf="officers" aria-pressed="${f === 'officers'}">幹部事項</button>` : ''}</div>
      ${p.officer ? '<button class="btn pri" id="add-task">＋ 新增任務</button>' : ''}`) +
     (list.length ? `<div class="board">${cols.map((c) => { const l = list.filter((t) => t.status === c); return `<section class="col"><h2>${STATUS[c]} <span class="mono muted">${l.length}</span></h2><div class="task-list">${l.map((t) => taskRow(t)).join('') || '<p class="muted small">—</p>'}</div></section>`; }).join('')}</div>`
       : empty('沒有任務', p.officer ? '按「新增任務」分派工作，可以設定只有幹部看得到。' : '有指派給你的任務時會出現在這裡。'));

@@ -32,7 +32,7 @@ async function detail(uid) {
 
 async function attPage(all) {
   const p = state.p;
-  if (all && !p.officer && !p.leader) return pageHead('出席率總表') + empty('只有幹部和組長看得到');
+  if (all && !p.viewAll && !p.leader) return pageHead('出席率總表') + empty('只有幹部、指導老師和組長看得到');
   if (!state.semester) return pageHead('出席') + empty('還沒有設定學期', '管理員到「設定」建立學期後，出席率才會開始計算。');
   const { data } = await sb.rpc('attendance_stats', { sem: state.semester.id });
   const stats = data || [];
@@ -51,7 +51,7 @@ async function attPage(all) {
   const honor = all || !p.insider ? [] : ((await sb.rpc('attendance_honor_roll', { sem: state.semester.id })).data || []).map((r) => r.user_id)
     .sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'zh-Hant'));  // 先載完自己的明細，再綁定按鈕（不然正式網站會綁不到）
   // 每場出席率要在綁定按鈕之前載完（不然正式網站會綁不到）
-  const evRates = all && p.officer ? ((await sb.rpc('event_rates', { sem: state.semester.id })).data || []) : [];
+  const evRates = all && p.viewAll ? ((await sb.rpc('event_rates', { sem: state.semester.id })).data || []) : [];
   setTimeout(() => {
     $$('[data-ev-go]').forEach((tr) => (tr.onclick = () => { location.hash = '#/events/' + tr.dataset.evGo; }));
     $$('[data-rsvp-go]').forEach((b) => (b.onclick = () => toggleAttend(b.dataset.ev, !!b.dataset.rsvpGo)));
@@ -62,7 +62,7 @@ async function attPage(all) {
     }));
   });
   const rules = state.settings.attendance_rules || {};
-  const head = all ? pageHead(p.officer ? '全團出席率' : '組員出席率', `${esc(state.semester.name)}・點一列看那個人的每一場紀錄。「目前」只算已點名的場次，「整學期」連同之後的場次一起算。`)
+  const head = all ? pageHead(p.viewAll ? '全團出席率' : '組員出席率', `${esc(state.semester.name)}・點一列看那個人的每一場紀錄。「目前」只算已點名的場次，「整學期」連同之後的場次一起算。`)
     : pageHead('出席', `${esc(state.semester.name)}・「目前」只算已點名的場次，「整學期」連同之後的場次一起算。沒排到曲目的場次算無曲，不列入。`) +
     `<section class="card me-att"><div class="rings bign">${rateRing(mine?.current_rate ?? null, '目前')}${rateRing(mine?.total_rate ?? null, '整學期')}</div>
       <div class="me-att-detail"><h2>我的紀錄</h2>${myDetail}</div></section>` +
@@ -77,8 +77,8 @@ async function attPage(all) {
   if (all && !others.length) return head + evCard + empty('還沒有可以顯示的出席率');
   return head + evCard +
     (others.length ? `<section class="card">
-      <div class="card-head"><h2>${p.officer ? '全團' : '組員'}出席率</h2><span class="muted small">晚到／早退有預告算 ${rules.late_weight ?? 1} 次、沒預告算 ${rules.unexcused_weight ?? 0.5} 次・事假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}・病假、公假不列入</span></div>
-      ${p.officer ? `<div class="sec-bars">${bySec.map(([s, r, n]) => `<div class="sec-bar"><span>${sectionChip(s)}</span><div class="bar"><i class="rate-${rateLevel(r)}" style="width:${r ?? 0}%"></i></div><span class="mono small">${r == null ? '—' : Math.round(r) + '%'}</span></div>`).join('')}</div>
+      <div class="card-head"><h2>${p.viewAll ? '全團' : '組員'}出席率</h2><span class="muted small">晚到／早退有預告算 ${rules.late_weight ?? 1} 次、沒預告算 ${rules.unexcused_weight ?? 0.5} 次・事假${rules.excused_mode === 'exclude' ? '不列入分母' : '算缺席'}・病假、公假不列入</span></div>
+      ${p.viewAll ? `<div class="sec-bars">${bySec.map(([s, r, n]) => `<div class="sec-bar"><span>${sectionChip(s)}</span><div class="bar"><i class="rate-${rateLevel(r)}" style="width:${r ?? 0}%"></i></div><span class="mono small">${r == null ? '—' : Math.round(r) + '%'}</span></div>`).join('')}</div>
       <div class="seg wrap"><button data-sec="" aria-pressed="${!secF}">全部</button>${SECTIONS.map((s) => `<button data-sec="${s}" aria-pressed="${secF === s}">${s}</button>`).join('')}</div>` : ''}
       <div class="tbl-wrap"><table class="att-tbl click"><thead><tr><th>成員</th><th>目前</th><th>整學期</th><th>出席</th><th>晚到</th><th>早退</th><th>請假</th><th>缺席</th></tr></thead><tbody>
       ${shown.map((s) => `<tr data-who="${s.user_id}" class="${s.user_id === me() ? 'me' : ''}"><td>${chipPerson(s.user_id)}${s.user_id === me() ? ' <span class="muted small">（我）</span>' : ''}</td><td>${pct(s.current_rate)}</td><td>${pct(s.total_rate)}</td>
