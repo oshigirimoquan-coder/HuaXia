@@ -8,7 +8,7 @@ async function loadAll(pieceId = null) {
   if (pieceId) pq = pq.eq('id', pieceId);
   const [pieces, parts, asg, ringers] = await Promise.all([
     pq, sb.from('piece_parts').select('*').order('sort'), sb.from('part_assignments').select('*'),
-    state.p.officer ? sb.from('ringers').select('id,name,school,status,user_id') : { data: [] },
+    state.p.viewAll ? sb.from('ringers').select('id,name,school,status,user_id') : { data: [] },
   ]);
   return { pieces: pieces.data || [], parts: parts.data || [], asg: asg.data || [], ringers: ringers.data || [] };
 }

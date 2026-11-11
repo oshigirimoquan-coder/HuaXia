@@ -26,7 +26,8 @@ async function edit(r = null) {
 }
 
 route('/ringers', async () => {
-  if (!state.p.officer) return empty('只有幹部可以管理槍手');
+  if (!state.p.viewAll) return empty('只有幹部和指導老師可以看槍手名單');
+  const canEdit = state.p.officer;  // 指導老師只能看
   const [{ data }, { data: asg }, { data: parts }] = await Promise.all([
     sb.from('ringers').select('*').order('created_at'),
     sb.from('part_assignments').select('*').not('ringer_id', 'is', null),
@@ -39,15 +40,15 @@ route('/ringers', async () => {
   const list = (data || []).filter((r) => !f || r.status === f);
   setTimeout(() => {
     $('#add-ringer')?.addEventListener('click', () => edit());
-    $$('[data-ringer]').forEach((el) => (el.onclick = () => edit(data.find((x) => x.id === el.dataset.ringer))));
+    if (canEdit) $$('[data-ringer]').forEach((el) => (el.onclick = () => edit(data.find((x) => x.id === el.dataset.ringer))));
     $$('[data-rf]').forEach((b) => (b.onclick = () => { sessionStorage.setItem('rf', b.dataset.rf); render(); }));
   });
   const n = (s) => (data || []).filter((r) => r.status === s).length;
-  return pageHead('槍手', '外校來支援演出的人。答應之後到「曲目」的編制裡排進聲部。', '<button class="btn pri" id="add-ringer">＋ 新增槍手</button>') +
+  return pageHead('槍手', '外校來支援演出的人。答應之後到「曲目」的編制裡排進聲部。', canEdit ? '<button class="btn pri" id="add-ringer">＋ 新增槍手</button>' : '') +
     `<div class="seg"><button data-rf="" aria-pressed="${!f}">全部 ${data?.length || 0}</button>${Object.entries(ST).map(([k, l]) => `<button data-rf="${k}" aria-pressed="${f === k}">${l} ${n(k)}</button>`).join('')}</div>` +
-    (list.length ? `<div class="tbl-wrap"><table class="click"><thead><tr><th>姓名</th><th>學校</th><th>樂器</th><th>狀態</th><th>負責聯絡</th><th>排到的聲部</th><th>帳號</th></tr></thead><tbody>
+    (list.length ? `<div class="tbl-wrap"><table class="${canEdit ? 'click' : ''}"><thead><tr><th>姓名</th><th>學校</th><th>樂器</th><th>狀態</th><th>負責聯絡</th><th>排到的聲部</th><th>帳號</th></tr></thead><tbody>
       ${list.map((r) => `<tr data-ringer="${r.id}"><td><b>${esc(r.name)}</b>${r.note ? `<div class="small muted">${esc(r.note)}</div>` : ''}</td><td>${esc(r.school)}</td><td>${esc(r.instruments)}</td>
         <td><span class="chip st-${r.status}">${ST[r.status]}</span></td><td>${r.contact_user_id ? chipPerson(r.contact_user_id) : '<span class="muted">—</span>'}</td>
         <td class="small">${partsOf(r).map(esc).join('<br>') || '<span class="muted">—</span>'}</td><td>${r.user_id ? '<span class="chip ok">已連結</span>' : '<span class="muted small">未註冊</span>'}</td></tr>`).join('')}
-    </tbody></table></div>` : empty('還沒有槍手名單', '把可以找的外校朋友加進來，記下誰負責聯絡、目前狀態。'));
+    </tbody></table></div>` : empty('還沒有槍手名單', canEdit ? '把可以找的外校朋友加進來，記下誰負責聯絡、目前狀態。' : ''));
 });

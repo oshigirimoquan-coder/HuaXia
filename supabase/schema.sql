@@ -567,8 +567,8 @@ create or replace function public.is_staff() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_officer() or public.has_role('teacher')
 $$;
--- 幹部或指導老師（2026-11 社團決定）：老師看得到全團出席、請假、點名、各組公告與出席率，只能看、不能改
--- 幹部會議、幹部事項、聯絡資料、病假證明、招生報名、槍手名單仍然只有幹部；寫入權限只看 is_officer()（泠靈也只依賴 is_officer()）
+-- 幹部或指導老師（2026-11 社團決定）：老師看得到全團出席、請假、點名、槍手名單、各組公告，只能看、不能改
+-- 幹部會議、幹部事項、聯絡資料、病假證明、招生報名仍然只有幹部；寫入權限只看 is_officer()（泠靈也只依賴 is_officer()）
 create or replace function public.officer_or_teacher() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_officer() or public.has_role('teacher')
@@ -1032,7 +1032,7 @@ create policy assign_write on public.part_assignments for all using (public.can_
 create policy seat_read on public.seating_charts for select using (public.is_insider() or public.in_piece(piece_id));
 create policy seat_write on public.seating_charts for all using (public.is_officer() or public.has_role('leader')) with check (public.is_officer() or public.has_role('leader'));
 create policy ringer_officer on public.ringers for all using (public.is_officer()) with check (public.is_officer());
-create policy ringer_self on public.ringers for select using (user_id = auth.uid());
+create policy ringer_self on public.ringers for select using (user_id = auth.uid() or public.officer_or_teacher());
 
 create or replace function public.can_read_score(s public.scores) returns boolean
 language sql stable security definer set search_path = public as $$
