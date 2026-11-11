@@ -1,5 +1,7 @@
 # 給接手的 AI / 開發者
 
+- 網站：https://nccu-huaxia.github.io/HuaXia/（repo `nccu-huaxia/HuaXia`）。
+
 - 使用者（Eddy）沒有程式背景，說明用白話、先講結論。
 - 權限以資料庫 RLS 為準（`supabase/schema.sql`）；前端 `js/logic.js` 的 `perms()` 只決定顯示什麼，兩邊要一致。
 - 泠靈（Ling Ling Suite）直接寫入曲目、聲部、樂譜、場次與 Storage，並呼叫 `lingling_publish`：改這些資料表、`is_officer()`、Storage 權限或發譜函式之前先看 `docs/LINGLING.md`。

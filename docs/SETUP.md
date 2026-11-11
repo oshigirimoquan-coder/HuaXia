@@ -18,7 +18,7 @@
 2. 左側 **OAuth2**：複製 **Client ID**，按 **Reset Secret** 取得 **Client Secret**。
 3. 回 Supabase **Authentication → Sign In / Providers → Discord**，打開，貼上 Client ID 與 Secret，複製畫面上的 **Callback URL**，Save。
 4. 回 Discord **OAuth2 → Redirects → Add Redirect**，貼上剛剛的 Callback URL，Save。
-5. Supabase **Authentication → URL Configuration**：**Site URL** 與 **Redirect URLs** 都填網站網址（例如 `https://<帳號>.github.io/<repo>/`）。
+5. Supabase **Authentication → URL Configuration**：**Site URL** 與 **Redirect URLs** 都填網站網址（目前是 `https://nccu-huaxia.github.io/HuaXia/`）。
 
 ## 3. Google 行事曆（服務帳戶）
 
@@ -42,7 +42,7 @@ Supabase **Edge Functions → Deploy a new function → Via Editor**，建立三
 |---|---|---|
 | `calendar-sync` | `supabase/dashboard/calendar-sync.ts` | 開啟 |
 | `notify` | `supabase/dashboard/notify.ts` | 開啟 |
-| `daily-reminder` | `supabase/dashboard/daily-reminder.ts` | **關閉**（排程呼叫，用 CRON_SECRET 驗證） |
+| `daily-reminder`（目前正式專案建成 `daily-reminder-`，排程已對應） | `supabase/dashboard/daily-reminder.ts` | **關閉**（排程呼叫，用 CRON_SECRET 驗證） |
 | `discord-interact`（選用） | `supabase/dashboard/discord-interact.ts` | **關閉**（Discord 呼叫，用簽章驗證） |
 
 > 華夏目前的每日提醒函式名稱是 `daily-reminder-`（多一個「-」），排程 `huaxia-daily-reminder` 已改成呼叫這個名字。
@@ -56,6 +56,8 @@ Supabase **Edge Functions → Deploy a new function → Via Editor**，建立三
 4. Supabase Secrets：`DISCORD_BOT_TOKEN`、`DISCORD_PUBLIC_KEY`。
 5. 部署 `discord-interact`（Verify JWT 關閉），把網址填到 General Information 的 **Interactions Endpoint URL** 並儲存。
 6. 重新部署每日提醒。之後提醒改由機器人發到各 webhook 所在的頻道；沒設定機器人時自動退回 webhook＋網址按鈕。
+
+> 換成另一個應用程式時：`DISCORD_PUBLIC_KEY` 先填「新的,舊的」（逗號隔開），舊機器人發過的訊息按鈕才不會失效；過幾天、舊訊息上的行程都結束後，再改成只填新的。
 
 > 會用指令列的人也可以 `npx supabase functions deploy`，來源在 `supabase/functions/`。修改來源後執行 `node scripts/bundle-functions.mjs` 重新產生單檔版。
 
