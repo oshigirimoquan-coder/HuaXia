@@ -308,19 +308,18 @@ tr.inactive { opacity: .5; }
 @media (max-width: 700px) { .me-att { grid-template-columns: minmax(0, 1fr); } }  /* 1fr 會被表格撐寬、整頁跑版 */
 .me-att > * { min-width: 0; }
 .att-detail td:nth-child(2) { min-width: 8em; }
-.reply-tag { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
-.rt-ok { background: var(--ok-soft); color: var(--ok); } .rt-warn { background: var(--warn-soft); color: var(--warn); } .rt-info { background: var(--soft); color: var(--accent); }
+/* 已回覆（會出席、晚到、請假）一律藍框；還沒回覆的沒有顏色 */
+.reply-tag { display: inline-flex; align-items: center; padding: 2px 10px; border: 1px solid var(--accent); border-radius: var(--r); color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .att-detail .rsvp { align-items: center; }
 .att-detail .c-st { white-space: nowrap; }
 /* 手機：每一場排成一張卡片
    第一行「日期（星期）・類型」＋右上角點名結果；第二行曲目（可換行）；下面是回覆按鈕、事由
-   還沒到的場次不顯示「尚未點名」；已回覆的卡片左邊有顏色條 */
+   還沒到的場次不顯示「尚未點名」 */
 @media (max-width: 700px) {
   .att-detail thead { display: none; }
   .att-detail, .att-detail tbody { display: block; }
   .att-detail tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 4px 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
   .att-detail tr:last-child { border-bottom: 0; }
-  .att-detail tr.rp-ok { box-shadow: inset 3px 0 var(--ok); } .att-detail tr.rp-warn { box-shadow: inset 3px 0 var(--warn); } .att-detail tr.rp-info { box-shadow: inset 3px 0 var(--accent); }
   .att-detail td { padding: 0; border: 0; min-width: 0; }
   .att-detail td:empty, .att-detail .c-future { display: none; }
   .att-detail .c-date { grid-column: 1; grid-row: 1; }
@@ -329,9 +328,6 @@ tr.inactive { opacity: .5; }
   .att-detail .c-kind::before { content: "\30FB"; margin-left: -.3em; }  /* ・，貼近日期的（）*/
   .att-detail .c-st { grid-column: 3; grid-row: 1; text-align: right; padding-left: 8px; }
   .att-detail .rsvp { flex-wrap: wrap; }
-  .att-detail .c-st .att { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--sunk); }
-  .att-detail .c-st .att-present { background: var(--ok-soft); } .att-detail .c-st .att-late, .att-detail .c-st .att-early { background: var(--warn-soft); }
-  .att-detail .c-st .att-absent { background: var(--bad-soft); } .att-detail .c-st .att-excused, .att-detail .c-st .att-sick, .att-detail .c-st .att-official { background: var(--soft); }
   .att-detail .c-title > a { grid-column: 1 / -1; grid-row: 2; font-size: 15px; }
   .att-detail .c-reply { grid-column: 1 / -1; grid-row: 3; margin-top: 6px; }
   .att-detail .c-why { grid-column: 1 / -1; color: var(--muted); }

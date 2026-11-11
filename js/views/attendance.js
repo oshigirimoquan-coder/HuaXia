@@ -15,20 +15,18 @@ async function detail(uid) {
   const mine = uid === me(), soon = Date.now() - 3 * 3600e3;
   const canReply = (r) => mine && r.expected && !r.marked && !r.status && new Date(r.starts_at).getTime() >= soon;
   const leaving = (r) => r.leave_type && r.leave_type !== 'attend';
-  // 已回覆的顏色：會出席綠、晚到早退黃、請假藍（跟點名狀態同一套顏色）
-  const tone = (t) => t === 'attend' ? 'ok' : t === 'late' || t === 'early' ? 'warn' : 'info';
   const reply = (r) => {
     if (!canReply(r)) return '';
     const dat = `data-ev="${r.event_id}" data-title="${esc(r.title)}"`;
-    if (leaving(r)) return `<div class="rsvp"><span class="reply-tag rt-${tone(r.leave_type)}">${replyTag(r.leave_type)}</span><button class="btn sm ghost" data-rsvp-leave ${dat} data-type="${r.leave_type}" data-reason="${esc(r.leave_reason || '')}">修改</button></div>`;
-    if (r.leave_type === 'attend') return `<div class="rsvp"><span class="reply-tag rt-ok">✓ 會出席</span><button class="btn sm ghost" data-rsvp-go="" ${dat}>取消</button><button class="btn sm ghost" data-rsvp-leave ${dat}>改請假／晚到</button></div>`;
+    if (leaving(r)) return `<div class="rsvp"><span class="reply-tag">${replyTag(r.leave_type)}</span><button class="btn sm ghost" data-rsvp-leave ${dat} data-type="${r.leave_type}" data-reason="${esc(r.leave_reason || '')}">修改</button></div>`;
+    if (r.leave_type === 'attend') return `<div class="rsvp"><span class="reply-tag">✓ 會出席</span><button class="btn sm ghost" data-rsvp-go="" ${dat}>取消</button><button class="btn sm ghost" data-rsvp-leave ${dat}>改請假／晚到</button></div>`;
     return `<div class="rsvp"><button class="btn sm line" data-rsvp-go="1" ${dat}>出席</button><button class="btn sm ghost" data-rsvp-leave ${dat}>請假／晚到</button></div>`;
   };
   const now = Date.now();
   const status = (r) => r.status ? `<span class="att att-${r.status}">${ATT_LABEL[r.status]}</span>`
     : r.marked ? '' : `<span class="muted small${new Date(r.starts_at).getTime() > now ? ' c-future' : ''}">尚未點名</span>`;
   return `<div class="tbl-wrap"><table class="att-tbl att-detail"><thead><tr><th>日期</th><th>行程</th>${mine ? '<th>我的回覆</th>' : ''}<th>狀態</th><th>事由</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr class="${canReply(r) && r.leave_type ? 'rp rp-' + tone(r.leave_type) : ''}"><td class="mono nowrap c-date">${fmtDate(r.starts_at)}</td><td class="c-title"><a href="#/events/${r.event_id}">${esc(r.title)}</a> <span class="muted small c-kind">${KIND_LABEL[r.kind]}</span></td>${mine ? `<td class="c-reply">${reply(r)}</td>` : ''}
+    ${rows.map((r) => `<tr><td class="mono nowrap c-date">${fmtDate(r.starts_at)}</td><td class="c-title"><a href="#/events/${r.event_id}">${esc(r.title)}</a> <span class="muted small c-kind">${KIND_LABEL[r.kind]}</span></td>${mine ? `<td class="c-reply">${reply(r)}</td>` : ''}
       <td class="c-st">${status(r)}</td>
       <td class="small c-why">${leaving(r) ? esc(leaveText(r.leave_type, r.leave_reason)) : esc(r.note || '')}</td></tr>`).join('')}
   </tbody></table></div>`;
