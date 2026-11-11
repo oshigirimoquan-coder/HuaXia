@@ -265,3 +265,14 @@ test('連結 Discord 回來時讀出「已經綁在另一個帳號」', async ()
   assert.equal(linkErrorFromUrl('', '#/me'), null);
   assert.equal(linkErrorFromUrl('?error_code=otp_expired', ''), null);
 });
+
+test('leaveText／replyTag：晚到早退時間不露出【】', async () => {
+  const { leaveText, replyTag } = await import('../js/logic.js');
+  assert.equal(leaveText('late', '【17:06 到】家教'), '晚到 17:06・家教');
+  assert.equal(leaveText('early', '【21:00 走】'), '早退 21:00');
+  assert.equal(leaveText('leave', '期中考'), '事假・期中考');
+  assert.equal(leaveText('sick', ''), '病假');
+  assert.equal(replyTag('late'), '已晚到');
+  assert.equal(replyTag('sick'), '已請病假');
+  assert.equal(replyTag('attend'), '會出席');
+});

@@ -1,6 +1,6 @@
 import { secsOf } from '../core.js';
 import { sb, state, me, route, esc, pageHead, empty, fmtDate, chipPerson, nameOf, sectionChip, render, $, $$ } from '../core.js';
-import { ATT_LABEL, KIND_LABEL, LEAVE_LABEL, SECTIONS, rateLevel, replyLine } from '../logic.js';
+import { ATT_LABEL, KIND_LABEL, SECTIONS, rateLevel, replyLine, leaveText, replyTag } from '../logic.js';
 import { rateRing } from './home.js';
 import { toggleAttend, leaveDialog } from './events.js';
 
@@ -13,17 +13,20 @@ async function detail(uid) {
   if (!rows.length) return '<p class="muted">這學期還沒有需要出席的行程。</p>';
   // 自己的明細：還沒點名、還沒開始（或剛開始）的場次，可以直接回覆出席或請假
   const mine = uid === me(), soon = Date.now() - 3 * 3600e3;
+  const canReply = (r) => mine && r.expected && !r.marked && !r.status && new Date(r.starts_at).getTime() >= soon;
+  const leaving = (r) => r.leave_type && r.leave_type !== 'attend';
   const reply = (r) => {
-    if (!r.expected || r.marked || r.status || new Date(r.starts_at).getTime() < soon) return '';
+    if (!canReply(r)) return '';
     const dat = `data-ev="${r.event_id}" data-title="${esc(r.title)}"`;
-    if (r.leave_type && r.leave_type !== 'attend') return `<button class="btn sm line" data-rsvp-leave ${dat} data-type="${r.leave_type}" data-reason="${esc(r.leave_reason || '')}">已${LEAVE_LABEL[r.leave_type]}・修改</button>`;
-    const on = r.leave_type === 'attend';
-    return `<div class="rsvp"><button class="btn sm ${on ? 'pri' : 'line'}" data-rsvp-go="${on ? '' : '1'}" ${dat} aria-pressed="${on}">${on ? '✓ 出席' : '出席'}</button><button class="btn sm ghost" data-rsvp-leave ${dat}>請假／晚到</button></div>`;
+    if (leaving(r)) return `<div class="rsvp"><span class="reply-tag">${replyTag(r.leave_type)}</span><button class="btn sm ghost" data-rsvp-leave ${dat} data-type="${r.leave_type}" data-reason="${esc(r.leave_reason || '')}">修改</button></div>`;
+    if (r.leave_type === 'attend') return `<div class="rsvp"><span class="reply-tag">✓ 會出席</span><button class="btn sm ghost" data-rsvp-go="" ${dat}>取消</button><button class="btn sm ghost" data-rsvp-leave ${dat}>改請假／晚到</button></div>`;
+    return `<div class="rsvp"><button class="btn sm line" data-rsvp-go="1" ${dat}>出席</button><button class="btn sm ghost" data-rsvp-leave ${dat}>請假／晚到</button></div>`;
   };
+  const status = (r) => r.status ? `<span class="att att-${r.status}">${ATT_LABEL[r.status]}</span>` : r.marked ? '' : '<span class="muted small">尚未點名</span>';
   return `<div class="tbl-wrap"><table class="att-tbl att-detail"><thead><tr><th>日期</th><th>行程</th>${mine ? '<th>我的回覆</th>' : ''}<th>狀態</th><th>事由</th></tr></thead><tbody>
     ${rows.map((r) => `<tr><td class="mono nowrap c-date">${fmtDate(r.starts_at)}</td><td class="c-title"><a href="#/events/${r.event_id}">${esc(r.title)}</a> <span class="muted small c-kind">${KIND_LABEL[r.kind]}</span></td>${mine ? `<td class="c-reply">${reply(r)}</td>` : ''}
-      <td class="c-st">${r.status ? `<span class="att att-${r.status}">${ATT_LABEL[r.status]}</span>` : r.marked ? '' : '<span class="muted small">尚未點名</span>'}</td>
-      <td class="small c-why">${r.leave_type && r.leave_type !== 'attend' ? `<span class="muted">${LEAVE_LABEL[r.leave_type]}：</span>${esc(r.leave_reason || '')}` : esc(r.note || '')}</td></tr>`).join('')}
+      <td class="c-st">${status(r)}</td>
+      <td class="small c-why">${leaving(r) ? esc(leaveText(r.leave_type, r.leave_reason)) : esc(r.note || '')}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 
